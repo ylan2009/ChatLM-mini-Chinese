@@ -21,7 +21,9 @@ class ChatBot:
         '''
         self.infer_config = infer_config
         # 初始化tokenizer
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(infer_config.model_dir)
+        # 如果tokenizer_dir为None，则使用model_dir（向后兼容）
+        tokenizer_path = infer_config.tokenizer_dir if infer_config.tokenizer_dir is not None else infer_config.model_dir
+        tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_path)
         self.tokenizer = tokenizer
         self.encode = tokenizer.encode_plus
         self.batch_decode = tokenizer.batch_decode

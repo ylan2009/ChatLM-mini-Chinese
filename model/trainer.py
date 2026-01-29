@@ -2,6 +2,7 @@ import signal
 import sys
 import os
 import time
+import shutil
 from typing import Union
 import platform 
 
@@ -21,7 +22,7 @@ from accelerate.utils import set_seed
 from model.chat_model import TextToTextModel
 from utils.logger import Logger
 from model.dataset import MyDataset
-from config import TrainConfig, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, T5ModelConfig
 from utils.functions import (
     get_bleu4_score, 
     save_model_config, 
@@ -32,7 +33,7 @@ from utils.functions import (
 )
 
 class ChatTrainer:
-    def __init__(self, train_config: TrainConfig, model_config: T5ModelConfig, ) -> None:
+    def __init__(self, train_config: Union[TrainConfig, TrainConfigSFT], model_config: T5ModelConfig, ) -> None:
         
         self.train_config = train_config
         self.model_config = model_config
@@ -87,9 +88,88 @@ class ChatTrainer:
             self.accelerator.wait_for_everyone()
 
             if self.accelerator.is_main_process:
+                save_path = self.train_config.model_file.format(suffix)
+                save_dir = os.path.dirname(save_path)
+                if save_dir:
+                    os.makedirs(save_dir, exist_ok=True)
+
+                # 先做一次清理，避免磁盘被 checkpoint 堆满（本项目单个 .bin ~ 0.7-0.8GB）
+                self._cleanup_checkpoints(keep_latest_n=self.train_config.keep_latest_n_ckp)
+
+                # 磁盘空间检查：至少预留 2GB，避免写到一半失败（你遇到的就是磁盘 100% 导致写失败）
+                try:
+                    free_gb = shutil.disk_usage(save_dir or ".").free / (1024 ** 3)
+                except Exception:
+                    free_gb = 0.0
+
+                if free_gb < 2.0:
+                    self.accelerator.print(
+                        f"[WARN] 磁盘剩余空间不足({free_gb:.2f}GB)，跳过保存模型: {save_path}"
+                    )
+                    return
+
                 unwrap_model = self.accelerator.unwrap_model(self.model)
-                model_dict =  self.accelerator.get_state_dict(unwrap_model)
-                torch.save(model_dict, self.train_config.model_file.format(suffix))
+                model_dict = self.accelerator.get_state_dict(unwrap_model)
+
+                # 写入失败时常见报错：PytorchStreamWriter failed writing file / unexpected pos
+                # 通常是磁盘满或底层文件系统 I/O 异常。这里做两层防护：
+                # 1) 使用旧版序列化，避免 zip writer 在部分文件系统上更容易触发 unexpected pos
+                # 2) 保存失败时删除不完整文件，避免下次继续把磁盘占满
+                try:
+                    torch.save(
+                        model_dict,
+                        save_path,
+                        _use_new_zipfile_serialization=False,
+                    )
+                except Exception as e:
+                    # 尝试删除半成品
+                    try:
+                        if os.path.exists(save_path):
+                            os.remove(save_path)
+                    except Exception:
+                        pass
+                    raise e
+
+    def _cleanup_checkpoints(self, keep_latest_n: int = 8) -> None:
+        """
+        清理旧 checkpoint，避免磁盘空间被写满。
+
+        规则：
+        - 保留 `chat_small_t5.best.bin`
+        - 保留最近 keep_latest_n 个 `chat_small_t5.epoch_*_latest.bin`
+        - 保留包含 `exit_save` 的应急保存
+        """
+        try:
+            model_file_tpl = self.train_config.model_file.replace("\\", "/")
+            model_dir = "/".join(model_file_tpl.split("/")[:-1]) or "."
+            if not os.path.isdir(model_dir):
+                return
+
+            best_path = self.train_config.model_file.format("best")
+            keep = set([best_path])
+
+            candidates = []
+            for fn in os.listdir(model_dir):
+                if not fn.endswith(".bin"):
+                    continue
+                full = os.path.join(model_dir, fn)
+                if "exit_save" in fn:
+                    keep.add(full)
+                    continue
+                # 只清理 epoch latest 文件，避免误删其它产物
+                if ".epoch_" in fn and fn.endswith("_latest.bin"):
+                    candidates.append(full)
+
+            # 按修改时间从新到旧排序
+            candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            keep.update(candidates[:keep_latest_n])
+
+            for p in candidates[keep_latest_n:]:
+                if p not in keep and os.path.exists(p):
+                    os.remove(p)
+        except Exception:
+            # 清理失败不影响训练
+            return
 
     
     def delete_early_checkpoint(self, epoch: int, keep_latest_n: int=3,) -> None:
@@ -157,6 +237,26 @@ class ChatTrainer:
             log.info('cpu memory available: {:.2f} GB, disk space available: {:.2f} GB, keep dataset in memory: {}.'\
                     .format(unuse_mem, unuse_disk, keep_in_memory), save_to_file=True)
             log.info('operation: {}, keep training: {}, loading datasets ...'.format('finetune' if is_finetune else 'train', is_keep_training))
+            
+            # 验证数据文件是否存在
+            if not os.path.exists(train_config.train_file):
+                raise FileNotFoundError(
+                    f'训练数据文件不存在: {train_config.train_file}\n'
+                    f'请先运行: python prepare_sft_data.py 生成训练数据'
+                )
+            if not os.path.exists(train_config.validation_file):
+                raise FileNotFoundError(
+                    f'验证数据文件不存在: {train_config.validation_file}\n'
+                    f'请先运行: python prepare_sft_data.py 生成训练数据'
+                )
+            
+            # 如果是微调，验证预训练模型是否存在
+            if is_finetune and not os.path.exists(train_config.finetune_from_ckp_file):
+                raise FileNotFoundError(
+                    f'预训练模型文件不存在: {train_config.finetune_from_ckp_file}\n'
+                    f'请先完成预训练，或检查config.py中的finetune_from_ckp_file路径是否正确\n'
+                    f'预训练命令: accelerate launch --multi_gpu --num_processes 2 ./train.py train'
+                )
 
         # args for dataloader
         num_workers = 0
@@ -216,14 +316,30 @@ class ChatTrainer:
 
         # 微调加载的模型并冻结embedding和encoder
         if is_finetune:
-            model.load_state_dict(torch.load(train_config.finetune_from_ckp_file))
-            # print(model)
+            if accelerator.is_main_process:
+                log.info(f'加载预训练模型: {train_config.finetune_from_ckp_file}', save_to_file=True)
             
+            model.load_state_dict(torch.load(train_config.finetune_from_ckp_file, map_location='cpu'))
+            
+            # 冻结embedding和encoder，只训练decoder
             layers_to_freeze = [model.shared, model.encoder]
-
+            
+            trainable_params = 0
+            total_params = 0
+            
             for layer in layers_to_freeze:
-                 for param in layer.parameters():
+                for param in layer.parameters():
                     param.requires_grad = False
+            
+            # 统计可训练参数
+            for param in model.parameters():
+                total_params += param.numel()
+                if param.requires_grad:
+                    trainable_params += param.numel()
+            
+            if accelerator.is_main_process:
+                log.info(f'SFT微调: 冻结embedding和encoder，只训练decoder', save_to_file=True)
+                log.info(f'可训练参数: {trainable_params:,} / 总参数: {total_params:,} ({100*trainable_params/total_params:.2f}%)', save_to_file=True)
 
         # 保存模型配置，方便修改配置后恢复
         save_model_config(t5_config.to_diff_dict(), train_config.model_config_file)
@@ -415,16 +531,26 @@ class ChatTrainer:
         '''
         评估，返回平均的bleu分数
         '''
+        # 重要：评估阶段不要在每一步做 all_gather（gather_for_metrics）。
+        # 原实现会在每个 batch 同步一次 GPU -> 等待最慢的 rank，
+        # 一旦某个 rank 因为 decode/bleu 计算更慢，就会逐步“落后”，最终触发 NCCL allgather timeout。
+        # 改为“各 rank 本地计算分数 + 最后 reduce 汇总”，只在末尾同步一次，大幅降低超时概率。
         max_seq_len = self.train_config.max_seq_len
         batch_decode = tokenizer.batch_decode
-        bleu4_scores = []
+
+        local_sum = 0.0
+        local_cnt = 0
 
         if accelerator.is_main_process:
             self.progress.reset(self.eval_progress)
             self.progress.update(self.eval_progress, visible=True)
 
+        max_eval_steps = 50 
+
         with torch.no_grad():
             for step, batch_data in enumerate(valid_dataloader):
+                
+                if step >= max_eval_steps: break
                 
                 if accelerator.is_main_process:
                     self.progress.advance(self.eval_progress, advance=1)
@@ -439,21 +565,29 @@ class ChatTrainer:
                     max_seq_len=max_seq_len,
                 )
 
-                # gather data from multi-gpus (used when in ddp mode)
-                outputs = accelerator.gather_for_metrics(outputs).detach().cpu().numpy()
-                target_ids = accelerator.gather_for_metrics(target_ids).detach().cpu().numpy()
-        
-                outputs = batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                target_ids = batch_decode(target_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                # 各 rank 只处理自己的 shard（不做 gather）
+                outputs = outputs.detach().cpu().numpy()
+                target_ids = target_ids.detach().cpu().numpy()
 
-                # print(outputs, target_ids)
+                outputs_txt = batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                target_txt = batch_decode(target_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
-                bleu4_scores = [get_bleu4_score(reference=target_ids[i], outputs=outputs[i]) for i in range(len(target_ids))]
-                bleu4_scores.extend(bleu4_scores)
+                # 逐样本计算 bleu4，并在本地累加
+                # 注意：原代码 `bleu4_scores = ...; bleu4_scores.extend(bleu4_scores)` 是明显 bug（自我扩展导致翻倍）
+                for i in range(len(target_txt)):
+                    local_sum += float(get_bleu4_score(reference=target_txt[i], outputs=outputs_txt[i]))
+                    local_cnt += 1
 
                 # if step >= 5: break
-        
-        avg_bleu4_score = my_average(bleu4_scores)
+
+        # 汇总各 rank 的 sum / count
+        device = accelerator.device
+        local_sum_t = torch.tensor(local_sum, device=device, dtype=torch.float32)
+        local_cnt_t = torch.tensor(local_cnt, device=device, dtype=torch.float32)
+        global_sum_t = accelerator.reduce(local_sum_t, reduction="sum")
+        global_cnt_t = accelerator.reduce(local_cnt_t, reduction="sum")
+        avg_bleu4_score = (global_sum_t / torch.clamp(global_cnt_t, min=1.0)).item()
+
         if accelerator.is_main_process:
             self.progress.update(self.eval_progress, show_info='bleu4 score: {}'.format(avg_bleu4_score))
             self.progress.update(self.eval_progress, visible=False)
@@ -523,8 +657,8 @@ class ChatTrainer:
         
         steps = int(np.ceil(len(test_dataset) // total_batch_size))
 
-        bleu4 = 0.0
-        bleu4_scores = []
+        local_sum = 0.0
+        local_cnt = 0
         batch_decode = tokenizer.batch_decode
         max_seq_len = self.train_config.max_seq_len
         model.eval()
@@ -560,24 +694,30 @@ class ChatTrainer:
                 )
                 # accelerator.print('generate used: {}'.format(time.time() - s))
 
-                # gather data from multi-gpus (used when in ddp mode)
-                outputs = accelerator.gather_for_metrics(outputs).cpu().numpy()
-                target_ids = accelerator.gather_for_metrics(target_ids).cpu().numpy()
+                # 测试阶段同理：不做每步 gather，避免不同 rank 速度差导致 NCCL 超时
+                outputs = outputs.detach().cpu().numpy()
+                target_ids = target_ids.detach().cpu().numpy()
                 
-                outputs = batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                target_ids = batch_decode(target_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                outputs_txt = batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                target_txt = batch_decode(target_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
                 # print('outputs: {}'.format(outputs[0:5]))
                 # print('target_ids: {}'.format(target_ids[0:5]))
                 # print()
 
 
-                bleu4_scores = [get_bleu4_score(reference=target_ids[i], outputs=outputs[i]) for i in range(len(target_ids))]
-                bleu4_scores.extend(bleu4_scores)
+                for i in range(len(target_txt)):
+                    local_sum += float(get_bleu4_score(reference=target_txt[i], outputs=outputs_txt[i]))
+                    local_cnt += 1
 
                 # if step >= 10: break
         
-        avg_bleu4_score = my_average(bleu4_scores)
+        device = accelerator.device
+        local_sum_t = torch.tensor(local_sum, device=device, dtype=torch.float32)
+        local_cnt_t = torch.tensor(local_cnt, device=device, dtype=torch.float32)
+        global_sum_t = accelerator.reduce(local_sum_t, reduction="sum")
+        global_cnt_t = accelerator.reduce(local_cnt_t, reduction="sum")
+        avg_bleu4_score = (global_sum_t / torch.clamp(global_cnt_t, min=1.0)).item()
         if accelerator.is_main_process:
             progress.update(steps_progress, show_info='bleu4 score: {}'.format(avg_bleu4_score))
 

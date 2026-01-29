@@ -1,3 +1,4 @@
+# IDE settings
 .vscode/*
 .vscode
 !.vscode/settings.json
@@ -5,23 +6,95 @@
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
-
-# Local History for Visual Studio Code
-.history/
 .idea/
+.history/
 
-# python cache
+# Python cache and compiled files
 *.pyc
+*.pyo
+*.pyd
+__pycache__/
 *.cache
+*.py[cod]
+*$py.class
+*.so
 
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Logs
 logs/*
+*.log
 
+# Data files (keep only sample datasets)
 data/*
 !/data/my_train_dataset_3k.parquet
 !/data/my_test_dataset_2k.parquet
 !/data/my_valid_dataset_1k.parquet
 
+# Model files (too large for git)
 model_save/*
 !model_save/put_model_files_here
+*.bin
+*.safetensors
+*.pth
+*.ckpt
+*.pt
 
+# Large output files
+*.csv
+output.txt
+output*.txt
+*_output*.csv
+ip_match_result.txt
+
+# Temporary and test files
+test
+temp/
+tmp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Syncthing files
+.stfolder*/
+.stignore
+.stversions/
+
+# Weights & Biases
 wandb/*
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Diagnostic and temporary markdown files (optional - uncomment if needed)
+# *_DIAGNOSIS.md
+# *_FIX.md
+# *_OPTIMIZATION.md
+# *_REPORT.md
+# *_CHECK_REPORT.md
