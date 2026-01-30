@@ -549,7 +549,8 @@ class ChatTrainer:
 
         # 评估更多步数以获得更准确的BLEU分数
         # 如果验证集较小，评估全部；如果较大，至少评估200步
-        max_eval_steps = min(eval_steps, max(200, eval_steps))
+        # max_eval_steps = min(eval_steps, max(200, eval_steps))
+        max_eval_steps = eval_steps
 
         with torch.no_grad():
             for step, batch_data in enumerate(valid_dataloader):
