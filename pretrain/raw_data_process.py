@@ -1156,7 +1156,7 @@ if __name__ == '__main__':
     
     # 注释了，不重复处理
     # 1.
-    # process_web_text(keep_start=5, response_less_word=15)
+    process_web_text(keep_start=5, response_less_word=15)
 
     # 2.
     # process_bake_qa(response_less_word=15)
@@ -1184,7 +1184,7 @@ if __name__ == '__main__':
     # merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
         
     
-    remove_dataset_duplicate_rows(groups_cnt=50000)
+    # remove_dataset_duplicate_rows(groups_cnt=50000)
 
     # # shuffle
     # shuffle_parquet_dataset(
@@ -1210,7 +1210,7 @@ if __name__ == '__main__':
 
     # count_my_parquet_data(PROJECT_ROOT + '/data/')
 
-    parquet_to_json()
+    # parquet_to_json()
     # count_my_json_data()
 
 
