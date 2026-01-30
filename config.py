@@ -140,18 +140,18 @@ class TrainConfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfigSFT:
-    epochs: int = 10                             # 使用1万条数据，10个epoch足够（总共约1000步）
-    batch_size_per_gpu: int = 20                 # 从16增加到20，增大batch size提高训练稳定性
+    epochs: int = 20                             # 增加到20个epoch，因为预训练不充分，需要更多训练
+    batch_size_per_gpu: int = 20                 # 保持20，平衡显存和训练稳定性
     
-    learn_rate: float = 2e-5                     # 从5e-5降低到2e-5，减少loss波动
-    div_factor: int = 50                         # 从25增加到50，让初始学习率更低更稳定
+    learn_rate: float = 5e-5                     # 提高到5e-5，因为预训练模型质量不好，需要更大的学习率
+    div_factor: int = 25                         # 降低到25，让初始学习率更高
 
     mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
 
     # 注意：计算梯度时相当于batch_size * gradient_accumulation_steps，说人话就是梯度累积步数>1时，等于增大n倍的batch_size
-    gradient_accumulation_steps: int = 4           # 从3增加到4，实际batch_size=20*2*4=160（更稳定）
+    gradient_accumulation_steps: int = 6           # 增加到6，实际batch_size=20*2*6=240（更大的有效batch size）
 
-    warmup_steps: int = 500                        # 从300增加到500，总步数约1000步/epoch，warmup占5%
+    warmup_steps: int = 200                        # 降低到200，因为数据量小，快速进入正常学习率
                                                    # 预热样本数=warmup_steps * batch_size * gradient_accumulation_steps
     
     max_grad_norm: float = 1.0                     # 添加梯度裁剪，防止梯度爆炸导致loss波动
@@ -171,10 +171,10 @@ class TrainConfigSFT:
     train_state_dir: str = PROJECT_ROOT + '/model_save/sft/train_latest_state_sft'
     output_dir: str = PROJECT_ROOT + '/model_save/sft'
 
-    # 根据训练集大小（1万条）调整：每个epoch约125步（2个GPU，batch_size=20，gradient_accumulation=4）
-    # 每25步记录一次，每125步保存一次（即每个epoch保存一次）
-    logging_steps: int = 25                        # 每个epoch约5次日志记录
-    save_steps: int = 125                          # 每个epoch保存1次检查点
+    # 根据训练集大小（8k条）调整：每个epoch约83步（2个GPU，batch_size=20，gradient_accumulation=6）
+    # 每20步记录一次，每83步保存一次（即每个epoch保存一次）
+    logging_steps: int = 20                        # 每个epoch约4次日志记录
+    save_steps: int = 83                           # 每个epoch保存1次检查点
     
     # dataset_cache_dir: str = PROJECT_ROOT + '/data/.cache'
     # trainer_log_file: str = PROJECT_ROOT + '/logs/trainer.log'
