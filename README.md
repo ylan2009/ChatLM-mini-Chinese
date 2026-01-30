@@ -472,3 +472,4 @@ curl --location '127.0.0.1:8812/api/chat' \
 pipreqs --encoding "utf-8" --force
 ``` -->
 
+# ChatLM-mini-Chinese

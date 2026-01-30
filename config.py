@@ -140,25 +140,27 @@ class TrainConfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfigSFT:
-    epochs: int = 10                             # 从5增加到10，因为当前loss很高需要更多训练
-    batch_size_per_gpu: int = 16                 # 从24减小到16，减小batch size提高学习稳定性
+    epochs: int = 10                             # 使用1万条数据，10个epoch足够（总共约1000步）
+    batch_size_per_gpu: int = 20                 # 从16增加到20，增大batch size提高训练稳定性
     
-    learn_rate: float = 5e-5                     # 从1e-5增加到5e-5（5倍），加快收敛速度
-    div_factor: int = 25                         # 从50减小到25，让初始学习率更高
+    learn_rate: float = 2e-5                     # 从5e-5降低到2e-5，减少loss波动
+    div_factor: int = 50                         # 从25增加到50，让初始学习率更低更稳定
 
     mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
 
     # 注意：计算梯度时相当于batch_size * gradient_accumulation_steps，说人话就是梯度累积步数>1时，等于增大n倍的batch_size
-    gradient_accumulation_steps: int = 3           # 从4减小到3，实际batch_size=16*2*3=96（更合理）
+    gradient_accumulation_steps: int = 4           # 从3增加到4，实际batch_size=20*2*4=160（更稳定）
 
-    warmup_steps: int = 300                        # 从100增加到300，总步数约833步/epoch，warmup占3.6%
+    warmup_steps: int = 500                        # 从300增加到500，总步数约1000步/epoch，warmup占5%
                                                    # 预热样本数=warmup_steps * batch_size * gradient_accumulation_steps
+    
+    max_grad_norm: float = 1.0                     # 添加梯度裁剪，防止梯度爆炸导致loss波动
 
     tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_wiki/'  # tokenizer一般和model权重放在同一个文件夹
     model_file: str = PROJECT_ROOT + '/model_save/sft/chat_small_t5.{}.bin'
     model_config_file: str = PROJECT_ROOT + '/model_save/sft/model_config.json'
-    train_file: str = PROJECT_ROOT + '/data/sft_train_dataset.parquet'
-    validation_file: str = PROJECT_ROOT + '/data/sft_valid_dataset.parquet'
+    train_file: str = PROJECT_ROOT + '/data/sft_train_dataset_10k.parquet'      # 1万条训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_valid_dataset_1k.parquet'  # 1千条验证数据
     test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
 
     # 从哪个模型开始微调，仅当traing 函数 is_finetune = True时生效
@@ -169,10 +171,10 @@ class TrainConfigSFT:
     train_state_dir: str = PROJECT_ROOT + '/model_save/sft/train_latest_state_sft'
     output_dir: str = PROJECT_ROOT + '/model_save/sft'
 
-    # 根据训练集大小（8万条）调整：每个epoch约833步（2个GPU，batch_size=16，gradient_accumulation=3）
-    # 每50步记录一次，每400步保存一次，更频繁保存以便观察训练效果
-    logging_steps: int = 50                        # 每个epoch约16-17次日志记录
-    save_steps: int = 400                          # 每个epoch保存2次检查点
+    # 根据训练集大小（1万条）调整：每个epoch约125步（2个GPU，batch_size=20，gradient_accumulation=4）
+    # 每25步记录一次，每125步保存一次（即每个epoch保存一次）
+    logging_steps: int = 25                        # 每个epoch约5次日志记录
+    save_steps: int = 125                          # 每个epoch保存1次检查点
     
     # dataset_cache_dir: str = PROJECT_ROOT + '/data/.cache'
     # trainer_log_file: str = PROJECT_ROOT + '/logs/trainer.log'
