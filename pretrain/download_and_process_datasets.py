@@ -65,8 +65,8 @@ DATASETS_CONFIG = {
             'BelleGroup/train_2M_CN',
             'BelleGroup/train_3.5M_CN',
 
-            'BelleGroup/generated_chat_0.4M',
-            'BelleGroup/train_0.5M_CN'
+            # 'BelleGroup/generated_chat_0.4M',
+            # 'BelleGroup/train_0.5M_CN'
             
         ],
         'save_dir': PROJECT_ROOT + '/data/raw_data/belle/',
@@ -374,7 +374,7 @@ def process_all_datasets() -> None:
     # 导入原有的处理函数
     from raw_data_process import (
         process_web_text,
-        process_bake_qa,
+        process_belle,
         process_chinese_medical_datasets,
         process_zhihu_kol_dataset,
         process_belle_knowledge_enhanced_dataset,
@@ -396,27 +396,21 @@ def process_all_datasets() -> None:
         os.makedirs(processed_file_dir)
     
     try:
-        # 1. 处理webtext2019zh
-        # log.info("处理 webtext2019zh 数据集...", save_to_file=True)
-        # process_web_text(keep_start=5, response_less_word=15)
-        
-        # 2. 处理baike_qa
-        # log.info("处理 baike_qa 数据集...", save_to_file=True)
-        process_bake_qa(response_less_word=15)
-        
-        # 3. 处理chinese_medical
+
+
+        # 1. 处理chinese_medical
         log.info("处理 chinese_medical 数据集...", save_to_file=True)
-        # process_chinese_medical_datasets(response_less_word=15)
+        process_chinese_medical_datasets(response_less_word=15)
         
-        # 4. 处理zhihu_kol
+        # 2. 处理zhihu_kol
         log.info("处理 zhihu_kol 数据集...", save_to_file=True)
-        # process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
+        process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
         
-        # 5. 处理belle
+        # 3. belle
         log.info("处理 belle 数据集...", save_to_file=True)
-        # process_belle_knowledge_enhanced_dataset(response_less_words=5)
+        process_belle(response_less_word=15)
         
-        # 6. 处理wiki（使用已有的wiki.simple.txt）
+        # 4. 处理wiki（使用已有的wiki.simple.txt）
         wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
         if os.path.exists(wiki_simple_file):
             log.info("处理 wiki 数据集...", save_to_file=True)
@@ -425,15 +419,15 @@ def process_all_datasets() -> None:
             log.warning("未找到 wiki.simple.txt 文件，跳过wiki数据处理", save_to_file=True)
             log.warning("如需处理wiki数据，请先运行: python tokenize/process_zhwiki.py", save_to_file=True)
         
-        # 7. 合并所有数据集
+        # 5. 合并所有数据集
         log.info("合并所有数据集...", save_to_file=True)
         merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
         
-        # 8. 去重
+        # 6. 去重
         log.info("去除重复数据...", save_to_file=True)
         remove_dataset_duplicate_rows(groups_cnt=50000)
         
-        # 9. 打乱数据
+        # 7. 打乱数据
         log.info("打乱数据集...", save_to_file=True)
         shuffle_parquet_dataset(
             parquet_file=PROJECT_ROOT + '/data/my_dataset.parquet',
@@ -441,7 +435,7 @@ def process_all_datasets() -> None:
             seed=23333
         )
         
-        # 10. 划分训练集、验证集、测试集
+        # 8. 划分训练集、验证集、测试集
         log.info("划分训练集、验证集、测试集...", save_to_file=True)
         split_train_valid_test_datasets(
             source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
@@ -449,23 +443,23 @@ def process_all_datasets() -> None:
             groups_cnt=50000
         )
         
-        # 11. 转换为文本格式（用于训练tokenizer）
+        # 9. 转换为文本格式（用于训练tokenizer）
         log.info("转换为文本格式...", save_to_file=True)
         parquet_to_text()
         
-        # 12. 统计数据
+        # 9. 统计数据
         log.info("统计数据集信息...", save_to_file=True)
         count_my_parquet_data(PROJECT_ROOT + '/data/')
         
-        # 13. 统计长度分布
+        # 10. 统计长度分布
         log.info("统计长度分布...", save_to_file=True)
         dataset_length_cnt()
         
-        # 14. 处理微调数据集
+        # 11. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
         # process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
         
-        # 15. 转换为JSON格式
+        # 12. 转换为JSON格式
         log.info("转换为JSON格式...", save_to_file=True)
         parquet_to_json()
         

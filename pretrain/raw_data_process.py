@@ -215,27 +215,28 @@ def process_web_text(keep_start: int=5, response_less_word: int=10) -> None:
             for idx in range(sample_size):
                 prompt = pf['prompt'][idx].as_py()
                 response = pf['response'][idx].as_py()
-                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt[:100] if len(prompt) > 100 else prompt), save_to_file=True)
-                log.info('第{}行 - response: {}'.format(idx + 1, response[:100] if len(response) > 100 else response), save_to_file=True)
+                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx + 1, response), save_to_file=True)
                 log.info('-' * 80, save_to_file=True)
         except Exception as e:
             log.error('读取样例数据失败：{}'.format(str(e)), save_to_file=True)
         log.info('=' * 80, save_to_file=True)
 
 
-def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_cnt: int=10000) -> None:
+def process_belle(response_less_word: int=15, prompt_less_word: int=3, group_cnt: int=10000) -> None:
     '''
     处理belle数据集（parquet格式）
 
     '''
-    # 获取belle目录下的所有parquet文件
+    # 指定要处理的三个parquet文件
     belle_data_path = PROJECT_ROOT + '/data/raw_data/belle'
-    file_names = []
-    suffix = '.parquet'
-    for root, _, files in walk(belle_data_path):
-        for file in files:
-            if file.endswith(suffix) and not file.endswith('.nas_pro_downloading'):
-                file_names.append(root + '/' + file)
+    file_names = [
+        f'{belle_data_path}/train_1M_CN.parquet',
+        f'{belle_data_path}/train_2M_CN.parquet',
+        f'{belle_data_path}/train_3.5M_CN.parquet'
+    ]
+    
+    log.info(f'将处理 {len(file_names)} 个parquet文件', save_to_file=True)
 
     save_file_name = PROJECT_ROOT + '/data/my_data/my_baike_qa.parquet'
     # 后续append写入，存在文件先删除
@@ -309,6 +310,14 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
                             prompt = conversations[i].get('value', '')
                             response = conversations[i+1].get('value', '')
                             
+                            # 剔除翻译任务
+                            if '翻译' in prompt or 'translate' in prompt.lower():
+                                continue
+                            
+                            # 删除表格类任务
+                            if '表格' in prompt or '-----' in prompt or '-----' in response:
+                                continue
+                            
                             # 数据清洗
                             prompt = process_function(prompt)
                             response = process_function(response)
@@ -340,6 +349,14 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
                     all_cnt += 1
                     prompt, response = prompt.as_py(), response.as_py()
                     
+                    # 剔除翻译任务
+                    if '翻译' in prompt or 'translate' in prompt.lower():
+                        continue
+                    
+                    # 删除表格类任务
+                    if '表格' in prompt or '-----' in prompt or '-----' in response:
+                        continue
+                    
                     # 数据清洗
                     prompt = process_function(prompt)
                     response = process_function(response)
@@ -370,8 +387,8 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
             log.info('=' * 80, save_to_file=True)
             log.info('文件 {} 处理完成，前{}行数据如下：'.format(file, len(file_sample_rows)), save_to_file=True)
             for idx, row in enumerate(file_sample_rows, 1):
-                log.info('第{}行 - prompt: {}'.format(idx, row['prompt'][:100] if len(row['prompt']) > 100 else row['prompt']), save_to_file=True)
-                log.info('第{}行 - response: {}'.format(idx, row['response'][:100] if len(row['response']) > 100 else row['response']), save_to_file=True)
+                log.info('第{}行 - prompt: {}'.format(idx, row['prompt']), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx, row['response']), save_to_file=True)
                 log.info('-' * 80, save_to_file=True)
             log.info('=' * 80, save_to_file=True)
                     
@@ -493,8 +510,8 @@ def process_chinese_medical_datasets(response_less_word: int=15) -> None:
             for idx in range(sample_size):
                 prompt = pf['prompt'][idx].as_py()
                 response = pf['response'][idx].as_py()
-                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt[:100] if len(prompt) > 100 else prompt), save_to_file=True)
-                log.info('第{}行 - response: {}'.format(idx + 1, response[:100] if len(response) > 100 else response), save_to_file=True)
+                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx + 1, response), save_to_file=True)
                 log.info('-' * 80, save_to_file=True)
         except Exception as e:
             log.error('读取样例数据失败：{}'.format(str(e)), save_to_file=True)
@@ -639,8 +656,8 @@ def process_zhihu_kol_dataset(prompt_less_word: int=4, response_less_word: int=1
         log.info('=' * 80, save_to_file=True)
         log.info('文件 {} 处理完成，前{}行数据如下：'.format(file, len(file_sample_rows)), save_to_file=True)
         for idx, row in enumerate(file_sample_rows, 1):
-            log.info('第{}行 - prompt: {}'.format(idx, row['prompt'][:100] if len(row['prompt']) > 100 else row['prompt']), save_to_file=True)
-            log.info('第{}行 - response: {}'.format(idx, row['response'][:100] if len(row['response']) > 100 else row['response']), save_to_file=True)
+            log.info('第{}行 - prompt: {}'.format(idx, row['prompt']), save_to_file=True)
+            log.info('第{}行 - response: {}'.format(idx, row['response']), save_to_file=True)
             log.info('-' * 80, save_to_file=True)
         log.info('=' * 80, save_to_file=True)
             
@@ -1450,50 +1467,169 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
     '''
     处理belle开源的知识增强数据集
     '''
-    file_names = [
-        '/data/raw_data/bell_open_source/Belle_open_source_0.5M.json',
-        '/data/raw_data/bell_open_source/train_conv_2.json',
-        '/data/raw_data/bell_open_source/generated_chat_0.4M.json',
-    ]
-
+    # 使用data/raw_data/belle目录下的指定parquet文件
+    raw_data_dir = PROJECT_ROOT + '/data/raw_data/belle'
     save_file = PROJECT_ROOT + '/data/my_finetune_data_zh.parquet'
 
     # 后续append写入，存在文件先删除
     if exists(save_file): 
         assert delete_file(save_file)
 
-    def process_function(line: str) -> dict:
-        '''
-        每行的处理函数
-        '''
-        item = ujson.loads(line)
-        prompt = item['instruction']
-        response = item['output']
-
-        # 剔除翻译任务
-        if 'translate' in prompt.lower(): return None
-        for word in ('翻译', '英译', '译英', '中译',  '译中', '汉译', '译汉'):
-            if word in prompt:
-                return None
+    # 指定要处理的三个parquet文件
+    parquet_files = [
+        f'{raw_data_dir}/generated_chat_0.4M.parquet',
+        f'{raw_data_dir}/train_0.5M_CN.parquet',
+        f'{raw_data_dir}/train_2M_CN.parquet'
+    ]
+    
+    log.info(f'将处理 {len(parquet_files)} 个parquet文件', save_to_file=True)
+    
+    all_cnt = 0
+    keep_cnt = 0
+    
+    for file_path in parquet_files:
+        log.info(f'处理文件: {file_path}', save_to_file=True)
         
-        # 删除表格类任务
-        if '表格' in prompt or '-----' in prompt or '-----' in response:
-            return None
-
-        if len(prompt) > max_len or len(response) > max_len:
-            return None
-
-        write_dict = {
-            'prompt': prompt,
-            'response': response
-        }
-
-        return write_dict
-
-    for file in file_names:
-        file = PROJECT_ROOT + file
-
-        read_and_write_template(file, save_file, process_function)
+        try:
+            # 读取parquet文件
+            table = pq.read_table(file_path)
+            pf = table.to_pandas()
+            
+            # 识别列名
+            columns = pf.columns.tolist()
+            log.info(f'文件列名: {columns}', save_to_file=True)
+            
+            prompt_col = None
+            response_col = None
+            
+            # 检查是否是conversations格式
+            if 'conversations' in columns:
+                # 处理conversations格式
+                file_sample_rows = []
+                file_row_cnt = 0
+                batch_data = []
+                
+                for idx, row in pf.iterrows():
+                    conversations = row['conversations']
+                    if not isinstance(conversations, list):
+                        continue
+                    
+                    # 提取所有human和assistant的对话
+                    for i in range(len(conversations) - 1):
+                        if conversations[i].get('from') == 'human' and conversations[i+1].get('from') == 'assistant':
+                            all_cnt += 1
+                            prompt = conversations[i].get('value', '')
+                            response = conversations[i+1].get('value', '')
+                            
+                            # 剔除翻译任务
+                            if 'translate' in prompt.lower():
+                                continue
+                            for word in ('翻译', '英译', '译英', '中译', '译中', '汉译', '译汉'):
+                                if word in prompt:
+                                    continue
+                            
+                            # 删除表格类任务
+                            if '表格' in prompt or '-----' in prompt or '-----' in response:
+                                continue
+                            
+                            # 长度过滤
+                            if len(prompt) > max_len or len(response) > max_len:
+                                continue
+                            
+                            keep_cnt += 1
+                            
+                            # 收集前10行样例
+                            if file_row_cnt < 10:
+                                file_sample_rows.append({'prompt': prompt, 'response': response})
+                                file_row_cnt += 1
+                            
+                            batch_data.append({'prompt': prompt, 'response': response})
+                            
+                            # 批量写入
+                            if len(batch_data) >= group_cnt:
+                                df = pd.DataFrame(batch_data)
+                                write(save_file, df, append=exists(save_file), compression='GZIP')
+                                batch_data = []
+                
+                # 写入剩余数据
+                if batch_data:
+                    df = pd.DataFrame(batch_data)
+                    write(save_file, df, append=exists(save_file), compression='GZIP')
+                
+            else:
+                # 识别普通格式的列名
+                for col in columns:
+                    col_lower = col.lower()
+                    if col_lower in ['instruction', 'prompt', 'input', 'question']:
+                        prompt_col = col
+                    elif col_lower in ['output', 'response', 'answer', 'target']:
+                        response_col = col
+                
+                if not prompt_col or not response_col:
+                    log.error(f'无法识别文件列名: {file_path}, 列名为: {columns}', save_to_file=True)
+                    continue
+                
+                log.info(f'使用列: prompt={prompt_col}, response={response_col}', save_to_file=True)
+                
+                file_sample_rows = []
+                file_row_cnt = 0
+                batch_data = []
+                
+                for idx, row in pf.iterrows():
+                    all_cnt += 1
+                    prompt = str(row[prompt_col])
+                    response = str(row[response_col])
+                    
+                    # 剔除翻译任务
+                    if 'translate' in prompt.lower():
+                        continue
+                    for word in ('翻译', '英译', '译英', '中译', '译中', '汉译', '译汉'):
+                        if word in prompt:
+                            continue
+                    
+                    # 删除表格类任务
+                    if '表格' in prompt or '-----' in prompt or '-----' in response:
+                        continue
+                    
+                    # 长度过滤
+                    if len(prompt) > max_len or len(response) > max_len:
+                        continue
+                    
+                    keep_cnt += 1
+                    
+                    # 收集前10行样例
+                    if file_row_cnt < 10:
+                        file_sample_rows.append({'prompt': prompt, 'response': response})
+                        file_row_cnt += 1
+                    
+                    batch_data.append({'prompt': prompt, 'response': response})
+                    
+                    # 批量写入
+                    if len(batch_data) >= group_cnt:
+                        df = pd.DataFrame(batch_data)
+                        write(save_file, df, append=exists(save_file), compression='GZIP')
+                        batch_data = []
+                
+                # 写入剩余数据
+                if batch_data:
+                    df = pd.DataFrame(batch_data)
+                    write(save_file, df, append=exists(save_file), compression='GZIP')
+            
+            # 输出当前文件处理完成后的前10行数据
+            log.info('=' * 80, save_to_file=True)
+            log.info('文件 {} 处理完成，前{}行数据如下：'.format(file_path, len(file_sample_rows)), save_to_file=True)
+            for idx, row in enumerate(file_sample_rows, 1):
+                log.info('第{}行 - prompt: {}'.format(idx, row['prompt']), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx, row['response']), save_to_file=True)
+                log.info('-' * 80, save_to_file=True)
+            log.info('=' * 80, save_to_file=True)
+            
+        except Exception as e:
+            log.error(f'处理文件 {file_path} 时出错: {str(e)}', save_to_file=True)
+            continue
+    
+    log.info(f'处理完成！总共处理 {all_cnt} 条数据，保留 {keep_cnt} 条数据', save_to_file=True)
+    log.info(f'数据已保存到: {save_file}', save_to_file=True)
 
 
 if __name__ == '__main__':
@@ -1507,7 +1643,7 @@ if __name__ == '__main__':
     process_web_text(keep_start=5, response_less_word=15)
 
     # 2.
-    process_bake_qa(response_less_word=15)
+    process_belle(response_less_word=15)
 
     # 3.
     process_chinese_medical_datasets(response_less_word=15)
