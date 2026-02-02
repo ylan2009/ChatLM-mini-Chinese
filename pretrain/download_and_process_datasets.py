@@ -340,10 +340,10 @@ def download_all_datasets() -> dict:
     log.info("开始下载所有数据集...", save_to_file=True)
     
     # 1. webtext2019zh
-    results['webtext2019zh'] = download_webtext2019zh()
+    # results['webtext2019zh'] = download_webtext2019zh()
     
     # 2. baike_qa
-    results['baike_qa'] = download_baike_qa()
+    # results['baike_qa'] = download_baike_qa()
     
     # 3. chinese_medical
     results['chinese_medical'] = download_chinese_medical()
