@@ -269,9 +269,13 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
             # 尝试不同的列名组合
             prompt_col = None
             response_col = None
+            is_conversations_format = False
             
             # 检查可能的列名
-            if 'instruction' in pf.column_names and 'output' in pf.column_names:
+            if 'conversations' in pf.column_names:
+                # conversations格式：包含多轮对话的列表
+                is_conversations_format = True
+            elif 'instruction' in pf.column_names and 'output' in pf.column_names:
                 prompt_col = 'instruction'
                 response_col = 'output'
             elif 'INSTRUCTION' in pf.column_names and 'RESPONSE' in pf.column_names:
@@ -288,35 +292,79 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
             file_sample_rows = []
             file_row_cnt = 0
             
-            for prompt, response in progress.track(zip(pf[prompt_col], pf[response_col]), total=pf.num_rows):
-                all_cnt += 1
-                prompt, response = prompt.as_py(), response.as_py()
-                
-                # 数据清洗
-                prompt = process_function(prompt)
-                response = process_function(response)
+            if is_conversations_format:
+                # 处理conversations格式
+                for conversations in progress.track(pf['conversations'], total=pf.num_rows):
+                    conversations = conversations.as_py()
+                    
+                    # conversations是一个列表，包含多轮对话
+                    # 每个元素是 {'from': 'human'/'assistant', 'value': '内容'}
+                    if not isinstance(conversations, list) or len(conversations) < 2:
+                        continue
+                    
+                    # 提取所有human和assistant的对话
+                    for i in range(len(conversations) - 1):
+                        if conversations[i].get('from') == 'human' and conversations[i+1].get('from') == 'assistant':
+                            all_cnt += 1
+                            prompt = conversations[i].get('value', '')
+                            response = conversations[i+1].get('value', '')
+                            
+                            # 数据清洗
+                            prompt = process_function(prompt)
+                            response = process_function(response)
 
-                # 剔除问题和答案过短的数据
-                if len(prompt) < prompt_less_word or len(response) < response_less_word:
-                    continue
-                
-                keep_cnt += 1
-                write_dict = {
-                    "prompt": prompt,
-                    "response": response,
-                }
-                append(write_dict)
-                
-                # 保存当前文件的前10行样例
-                if file_row_cnt < 10:
-                    file_sample_rows.append(write_dict)
-                    file_row_cnt += 1
+                            # 剔除问题和答案过短的数据
+                            if len(prompt) < prompt_less_word or len(response) < response_less_word:
+                                continue
+                            
+                            keep_cnt += 1
+                            write_dict = {
+                                "prompt": prompt,
+                                "response": response,
+                            }
+                            append(write_dict)
+                            
+                            # 保存当前文件的前10行样例
+                            if file_row_cnt < 10:
+                                file_sample_rows.append(write_dict)
+                                file_row_cnt += 1
 
-                if len(cur_rows) >= group_cnt:
-                    df = pd.DataFrame(cur_rows)
-                    write_single_parquet_file(save_file_name, df)
-                    cur_rows = []
-                    append = cur_rows.append
+                            if len(cur_rows) >= group_cnt:
+                                df = pd.DataFrame(cur_rows)
+                                write_single_parquet_file(save_file_name, df)
+                                cur_rows = []
+                                append = cur_rows.append
+            else:
+                # 处理普通格式
+                for prompt, response in progress.track(zip(pf[prompt_col], pf[response_col]), total=pf.num_rows):
+                    all_cnt += 1
+                    prompt, response = prompt.as_py(), response.as_py()
+                    
+                    # 数据清洗
+                    prompt = process_function(prompt)
+                    response = process_function(response)
+
+                    # 剔除问题和答案过短的数据
+                    if len(prompt) < prompt_less_word or len(response) < response_less_word:
+                        continue
+                    
+                    keep_cnt += 1
+                    write_dict = {
+                        "prompt": prompt,
+                        "response": response,
+                    }
+                    append(write_dict)
+                    
+                    # 保存当前文件的前10行样例
+                    if file_row_cnt < 10:
+                        file_sample_rows.append(write_dict)
+                        file_row_cnt += 1
+
+                    if len(cur_rows) >= group_cnt:
+                        df = pd.DataFrame(cur_rows)
+                        write_single_parquet_file(save_file_name, df)
+                        cur_rows = []
+                        append = cur_rows.append
             
             # 输出当前文件处理完成后的前10行数据
             log.info('=' * 80, save_to_file=True)
