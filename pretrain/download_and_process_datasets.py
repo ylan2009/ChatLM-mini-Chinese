@@ -292,7 +292,7 @@ def download_all_datasets() -> dict:
     # results['webtext2019zh'] = download_webtext2019zh()
     
     # 2. baike_qa
-    results['baike_qa'] = download_baike_qa()
+    # results['baike_qa'] = download_baike_qa()
     
     # 3. chinese_medical
     results['chinese_medical'] = download_chinese_medical()
@@ -346,8 +346,8 @@ def process_all_datasets() -> None:
         # process_web_text(keep_start=5, response_less_word=15)
         
         # 2. 处理baike_qa
-        log.info("处理 baike_qa 数据集...", save_to_file=True)
-        process_bake_qa(response_less_word=15)
+        # log.info("处理 baike_qa 数据集...", save_to_file=True)
+        # process_bake_qa(response_less_word=15)
         
         # 3. 处理chinese_medical
         log.info("处理 chinese_medical 数据集...", save_to_file=True)
