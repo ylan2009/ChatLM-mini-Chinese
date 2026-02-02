@@ -779,6 +779,14 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
     np.random.seed(seed)
     choice = np.random.choice
 
+    # 添加调试计数器
+    title_cnt = 0  # 识别到的标题数量
+    content_cnt = 0  # 处理的内容行数量
+    saved_cnt = 0  # 保存的问答对数量
+    
+    log.info(f"开始处理wiki数据，skip_clean={skip_clean}", save_to_file=True)
+    log.info(f"判断冒号类型: {'英文冒号(:)' if skip_clean else '中文冒号(：)'}", save_to_file=True)
+    
     with progress.open(wiki_simple_file, 'r', encoding='utf-8') as read_file:
         prompt = '' 
         response = '' 
@@ -792,6 +800,10 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
             # 先strip获取原始行的长度信息
             line_stripped = line.strip()
             
+            # 每处理10万行打印一次进度
+            if all_cnt % 100000 == 0:
+                log.info(f"已处理 {all_cnt} 行，识别标题 {title_cnt} 个，内容行 {content_cnt} 行，保存 {saved_cnt} 条", save_to_file=True)
+            
             # prompt已经保存，但是仍有多余的行，这些行使得response的长度＞max_len，故跳过，不处理
             if len(prompt) == 0 and pre_line_len > 0:
                 pre_line_len = len(line_stripped)
@@ -804,6 +816,12 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
                 title = line_stripped[0: -1]
                 prompt = choice(prompt_prefix).format(title)
                 pre_line_len = len(line_stripped)
+                title_cnt += 1
+                
+                # 打印前10个标题作为调试信息
+                if title_cnt <= 10:
+                    log.info(f"识别标题 #{title_cnt}: '{title}' -> prompt: '{prompt}'", save_to_file=True)
+                
                 continue
             
             # 清洗一行（只对内容行进行清洗）
@@ -814,15 +832,30 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
             # 问题下来若干行为答案
             # 注意：如果skip_clean=True，使用英文冒号；否则使用中文冒号（因为清洗会转换）
             colon_to_check = ':' if skip_clean else '：'
+            
+            # 调试：打印前几行的判断逻辑
+            if content_cnt < 20 and prompt != '':
+                log.info(f"内容行 #{content_cnt}: line末尾='{line[-10:] if len(line) > 10 else line}', "
+                        f"endswith('{colon_to_check}')={line.endswith(colon_to_check)}, "
+                        f"len(line)={len(line)}, pre_line_len={pre_line_len}", save_to_file=True)
+            
             if prompt != '' and not line.endswith(colon_to_check):
+                content_cnt += 1
+                
                 # 其实，pre_line_len已经是len(line_stripped)了，如果len(line_stripped)=0，既是当前行是0，则不管答案长度够不够，都需要保存了
                 if len(response) + len(line) <= max_len and pre_line_len != 0:
                     response = '{}{}'.format(response, line)
                 elif len(response) + len(line) > max_len or pre_line_len == 0:
                     # 长度超了或者当前的百科已经结束，保存一条样例
                     keep_cnt += 1
+                    saved_cnt += 1
                     response = '{}{}'.format(response, line)
                     append({'prompt': prompt, 'response': ''.join(response[0: max_len])})
+                    
+                    # 打印前5个保存的样例
+                    if saved_cnt <= 5:
+                        log.info(f"保存样例 #{saved_cnt}: prompt='{prompt[:50]}...', response='{response[:50]}...'", save_to_file=True)
+                    
                     prompt = ''
                     response = ''
 
@@ -843,7 +876,15 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
             write_single_parquet_file(zhwiki_simple_parquet, df)
             cur_rows = []
 
-    log.info("merge into file: {}, 全部数据共{}行，清洗后剩余{}行".format(zhwiki_simple_parquet, all_cnt, keep_cnt), save_to_file=True)
+    log.info("=" * 60, save_to_file=True)
+    log.info(f"处理完成统计:", save_to_file=True)
+    log.info(f"  - 总行数: {all_cnt}", save_to_file=True)
+    log.info(f"  - 识别标题数: {title_cnt}", save_to_file=True)
+    log.info(f"  - 处理内容行数: {content_cnt}", save_to_file=True)
+    log.info(f"  - 保存问答对数: {saved_cnt}", save_to_file=True)
+    log.info(f"  - keep_cnt: {keep_cnt}", save_to_file=True)
+    log.info("=" * 60, save_to_file=True)
+    log.info(f'merge into file: {zhwiki_simple_parquet}, 全部数据共{all_cnt}行，清洗后剩余{keep_cnt}行', save_to_file=True)
 
 
 
