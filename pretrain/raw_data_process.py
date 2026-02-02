@@ -809,12 +809,35 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
                 pre_line_len = len(line_stripped)
                 continue
             
-            # 确定问题，pre_line_len是0，既是上一行是空行，则当前行是新的百科词条，设置为prompt
-            # 注意：这里要在清洗之前判断，因为清洗会破坏格式
+            # 确定问题：识别标题行
+            # 1. 主标题：以英文冒号结尾，且上一行是空行（pre_line_len == 0）
+            # 2. 子标题：以句号结尾，且长度较短（<= 20个字符）
+            is_title = False
+            title = ''
+            
+            # 主标题：数学:
             if prompt == '' and line_stripped.endswith(':') and pre_line_len == 0:
-                # 提取词条名（去掉末尾的冒号）
-                title = line_stripped[0: -1]
+                title = line_stripped[0: -1]  # 去掉末尾的冒号
+                is_title = True
+            # 子标题：词源. 历史. 等
+            elif line_stripped.endswith('.') and len(line_stripped) <= 20 and len(line_stripped) > 0:
+                title = line_stripped[0: -1]  # 去掉末尾的句号
+                is_title = True
+            
+            if is_title:
+                # 如果之前有未保存的内容，先保存
+                if prompt != '' and response != '':
+                    keep_cnt += 1
+                    saved_cnt += 1
+                    append({'prompt': prompt, 'response': ''.join(response[0: max_len])})
+                    
+                    # 打印前5个保存的样例
+                    if saved_cnt <= 5:
+                        log.info(f"保存样例 #{saved_cnt}: prompt='{prompt[:50]}...', response='{response[:50]}...'", save_to_file=True)
+                
+                # 设置新的标题
                 prompt = choice(prompt_prefix).format(title)
+                response = ''
                 pre_line_len = len(line_stripped)
                 title_cnt += 1
                 
