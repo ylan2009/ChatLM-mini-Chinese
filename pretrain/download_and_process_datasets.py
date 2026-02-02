@@ -42,18 +42,13 @@ log = Logger('download_datasets', save2file=True, file_name=PROJECT_ROOT + '/log
 # 数据集下载配置
 DATASETS_CONFIG = {
     'webtext2019zh': {
-        'urls': {
-            'train': 'https://huggingface.co/datasets/silver/webtext2019zh/resolve/main/web_text_zh_train.json',
-            'valid': 'https://huggingface.co/datasets/silver/webtext2019zh/resolve/main/web_text_zh_valid.json',
-            'test': 'https://huggingface.co/datasets/silver/webtext2019zh/resolve/main/web_text_zh_test.json',
-        },
+        'note': 'webtext2019zh数据集需要从HuggingFace下载，使用datasets库',
+        'hf_dataset': 'silver/webtext2019zh',
         'save_dir': PROJECT_ROOT + '/data/raw_data/',
     },
     'baike_qa': {
-        'urls': {
-            'train': 'https://huggingface.co/datasets/silver/baike_qa2019/resolve/main/baike_qa_train.json',
-            'valid': 'https://huggingface.co/datasets/silver/baike_qa2019/resolve/main/baike_qa_valid.json',
-        },
+        'note': '百度百科问答数据集需要从HuggingFace下载，使用datasets库',
+        'hf_dataset': 'silver/baike_qa2019',
         'save_dir': PROJECT_ROOT + '/data/raw_data/',
     },
     'chinese_medical': {
@@ -64,14 +59,13 @@ DATASETS_CONFIG = {
         'extract': True,
     },
     'belle': {
-        'urls': {
-            'belle_1m': 'https://huggingface.co/datasets/BelleGroup/train_1M_CN/resolve/main/Belle_open_source_1M.json',
-            'belle_2m': 'https://huggingface.co/datasets/BelleGroup/train_2M_CN/resolve/main/train_2M_CN.json',
-            'belle_3.5m': 'https://huggingface.co/datasets/BelleGroup/train_3.5M_CN/resolve/main/train_3.5M_CN.json',
-            'belle_0.5m': 'https://huggingface.co/datasets/BelleGroup/train_0.5M_CN/resolve/main/Belle_open_source_0.5M.json',
-            'belle_0.8m': 'https://huggingface.co/datasets/BelleGroup/multiturn_chat_0.8M/resolve/main/multiturn_chat_0.8M.json',
-        },
-        'save_dir': PROJECT_ROOT + '/data/raw_data/bell_open_source/',
+        'note': 'BELLE数据集需要从HuggingFace下载，使用datasets库',
+        'hf_datasets': [
+            'BelleGroup/train_1M_CN',
+            'BelleGroup/train_2M_CN',
+            'BelleGroup/train_3.5M_CN',
+        ],
+        'save_dir': PROJECT_ROOT + '/data/raw_data/belle/',
     },
     'zhihu_kol': {
         'note': '知乎KOL数据集需要从HuggingFace下载，使用datasets库',
@@ -147,39 +141,71 @@ def extract_zip(zip_path: str, extract_to: str) -> bool:
 
 
 def download_webtext2019zh() -> bool:
-    """下载webtext2019zh数据集"""
+    """下载webtext2019zh数据集（使用HuggingFace datasets库）"""
     log.info("=" * 60, save_to_file=True)
     log.info("下载 webtext2019zh 数据集", save_to_file=True)
     log.info("=" * 60, save_to_file=True)
     
-    config = DATASETS_CONFIG['webtext2019zh']
-    ensure_dir(config['save_dir'])
-    
-    success = True
-    for name, url in config['urls'].items():
-        save_path = os.path.join(config['save_dir'], f'web_text_zh_{name}.json')
-        if not download_file(url, save_path):
-            success = False
-    
-    return success
+    try:
+        from datasets import load_dataset
+        
+        config = DATASETS_CONFIG['webtext2019zh']
+        ensure_dir(config['save_dir'])
+        
+        log.info(f"从HuggingFace下载: {config['hf_dataset']}", save_to_file=True)
+        
+        # 下载数据集（包含train, valid, test分割）
+        dataset = load_dataset(config['hf_dataset'])
+        
+        # 分别保存各个分割
+        for split_name in dataset.keys():
+            save_path = os.path.join(config['save_dir'], f'web_text_zh_{split_name}.parquet')
+            dataset[split_name].to_parquet(save_path)
+            log.info(f"{split_name} 数据集已保存到: {save_path}", save_to_file=True)
+            log.info(f"{split_name} 数据集大小: {len(dataset[split_name])} 行", save_to_file=True)
+        
+        return True
+        
+    except ImportError:
+        log.error("需要安装 datasets 库: pip install datasets", save_to_file=True)
+        return False
+    except Exception as e:
+        log.error(f"下载失败: {str(e)}", save_to_file=True)
+        return False
 
 
 def download_baike_qa() -> bool:
-    """下载百度百科问答数据集"""
+    """下载百度百科问答数据集（使用HuggingFace datasets库）"""
     log.info("=" * 60, save_to_file=True)
     log.info("下载 baike_qa 数据集", save_to_file=True)
     log.info("=" * 60, save_to_file=True)
     
-    config = DATASETS_CONFIG['baike_qa']
-    ensure_dir(config['save_dir'])
-    
-    success = True
-    for name, url in config['urls'].items():
-        save_path = os.path.join(config['save_dir'], f'baike_qa_{name}.json')
-        if not download_file(url, save_path):
-            success = False
-    
-    return success
+    try:
+        from datasets import load_dataset
+        
+        config = DATASETS_CONFIG['baike_qa']
+        ensure_dir(config['save_dir'])
+        
+        log.info(f"从HuggingFace下载: {config['hf_dataset']}", save_to_file=True)
+        
+        # 下载数据集（包含train, valid分割）
+        dataset = load_dataset(config['hf_dataset'])
+        
+        # 分别保存各个分割
+        for split_name in dataset.keys():
+            save_path = os.path.join(config['save_dir'], f'baike_qa_{split_name}.parquet')
+            dataset[split_name].to_parquet(save_path)
+            log.info(f"{split_name} 数据集已保存到: {save_path}", save_to_file=True)
+            log.info(f"{split_name} 数据集大小: {len(dataset[split_name])} 行", save_to_file=True)
+        
+        return True
+        
+    except ImportError:
+        log.error("需要安装 datasets 库: pip install datasets", save_to_file=True)
+        return False
+    except Exception as e:
+        log.error(f"下载失败: {str(e)}", save_to_file=True)
+        return False
 
 
 def download_chinese_medical() -> bool:
@@ -206,23 +232,48 @@ def download_chinese_medical() -> bool:
 
 
 def download_belle_datasets() -> bool:
-    """下载BELLE开源数据集"""
+    """下载BELLE开源数据集（使用HuggingFace datasets库）"""
     log.info("=" * 60, save_to_file=True)
     log.info("下载 BELLE 数据集", save_to_file=True)
     log.info("=" * 60, save_to_file=True)
     
-    config = DATASETS_CONFIG['belle']
-    ensure_dir(config['save_dir'])
-    
-    success = True
-    for name, url in config['urls'].items():
-        # 从URL中提取文件名
-        filename = url.split('/')[-1]
-        save_path = os.path.join(config['save_dir'], filename)
-        if not download_file(url, save_path):
-            success = False
-    
-    return success
+    try:
+        from datasets import load_dataset
+        
+        config = DATASETS_CONFIG['belle']
+        ensure_dir(config['save_dir'])
+        
+        success = True
+        for dataset_name in config['hf_datasets']:
+            try:
+                log.info(f"从HuggingFace下载: {dataset_name}", save_to_file=True)
+                
+                # 下载数据集
+                dataset = load_dataset(dataset_name, split='train')
+                
+                # 提取数据集名称作为文件名
+                # 例如: BelleGroup/train_1M_CN -> train_1M_CN
+                file_name = dataset_name.split('/')[-1]
+                save_path = os.path.join(config['save_dir'], f'{file_name}.parquet')
+                
+                # 保存为parquet格式
+                dataset.to_parquet(save_path)
+                
+                log.info(f"数据集已保存到: {save_path}", save_to_file=True)
+                log.info(f"数据集大小: {len(dataset)} 行", save_to_file=True)
+                
+            except Exception as e:
+                log.error(f"下载 {dataset_name} 失败: {str(e)}", save_to_file=True)
+                success = False
+        
+        return success
+        
+    except ImportError:
+        log.error("需要安装 datasets 库: pip install datasets", save_to_file=True)
+        return False
+    except Exception as e:
+        log.error(f"下载失败: {str(e)}", save_to_file=True)
+        return False
 
 
 def download_zhihu_kol() -> bool:
@@ -288,11 +339,11 @@ def download_all_datasets() -> dict:
     
     log.info("开始下载所有数据集...", save_to_file=True)
     
-    # # 1. webtext2019zh
-    # results['webtext2019zh'] = download_webtext2019zh()
+    # 1. webtext2019zh
+    results['webtext2019zh'] = download_webtext2019zh()
     
     # 2. baike_qa
-    # results['baike_qa'] = download_baike_qa()
+    results['baike_qa'] = download_baike_qa()
     
     # 3. chinese_medical
     results['chinese_medical'] = download_chinese_medical()

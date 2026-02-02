@@ -25,6 +25,11 @@
 pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 ```
 
+**重要说明**：
+- 本脚本使用 HuggingFace 的 `datasets` 库来下载数据集，而不是直接下载原始文件
+- 这样可以自动处理数据集的下载和缓存、支持断点续传、统一数据格式（parquet）
+- 如果没有安装 `datasets` 库，脚本将无法下载 HuggingFace 上的数据集
+
 ### 2. 下载所有数据集
 
 ```bash
