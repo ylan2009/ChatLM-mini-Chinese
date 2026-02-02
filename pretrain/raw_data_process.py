@@ -263,6 +263,8 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
         
         try:
             pf = pq.read_table(file)
+
+            print(pf.column_names)
             
             # 尝试不同的列名组合
             prompt_col = None
