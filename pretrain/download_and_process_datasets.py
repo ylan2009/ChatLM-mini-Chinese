@@ -406,11 +406,11 @@ def process_all_datasets() -> None:
         
         # 3. 处理chinese_medical
         log.info("处理 chinese_medical 数据集...", save_to_file=True)
-        process_chinese_medical_datasets(response_less_word=15)
+        # process_chinese_medical_datasets(response_less_word=15)
         
         # 4. 处理zhihu_kol
         log.info("处理 zhihu_kol 数据集...", save_to_file=True)
-        process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
+        # process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
         
         # 5. 处理belle
         log.info("处理 belle 数据集...", save_to_file=True)

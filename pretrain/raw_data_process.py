@@ -676,11 +676,11 @@ def process_zh_wiki_data_to_datset(groups_cnt: int=10000, max_len: int=512, seed
                 prompt = choice(prompt_prefix).format(line[0: -1])
                 continue
 
-            pre_line_len = len(line.strip())
+            pre_line_len = len(line_stripped)
 
             # 问题下来若干行为答案
-            if prompt != '' and not line.endswith('：'):
-                # 其实，pre_line_len已经是len(line.strip())了，如果len(line.strip())=0，既是当前行是0，则不管答案长度够不够，都需要保存了
+            if prompt != '' and not line_stripped.endswith(':'):
+                # 其实，pre_line_len已经是len(line_stripped)了，如果len(line_stripped)=0，既是当前行是0，则不管答案长度够不够，都需要保存了
                 if len(response) + len(line) <= max_len and pre_line_len != 0: 
                     response = '{}{}'.format(response, line)
                 elif len(response) + len(line) > max_len or pre_line_len == 0:
@@ -776,20 +776,27 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
         for line in read_file:
             all_cnt += 1
 
+            # 先strip获取原始行的长度信息
+            line_stripped = line.strip()
+            
             # prompt已经保存，但是仍有多余的行，这些行使得response的长度＞max_len，故跳过，不处理
             if len(prompt) == 0 and pre_line_len > 0:
-                pre_line_len = len(line.strip())
+                pre_line_len = len(line_stripped)
                 continue
-            
-            # 清洗一行
-            line = process_line(line)
             
             # 确定问题，pre_line_len是0，既是上一行是空行，则当前行是新的百科词条，设置为prompt
-            if prompt == '' and line.endswith('：') and pre_line_len == 0:
-                prompt = choice(prompt_prefix).format(line[0: -1])
+            # 注意：这里要在清洗之前判断，因为清洗会破坏格式
+            if prompt == '' and line_stripped.endswith(':') and pre_line_len == 0:
+                # 提取词条名（去掉末尾的冒号）
+                title = line_stripped[0: -1]
+                prompt = choice(prompt_prefix).format(title)
+                pre_line_len = len(line_stripped)
                 continue
-
-            pre_line_len = len(line.strip())
+            
+            # 清洗一行（只对内容行进行清洗）
+            line = process_line(line_stripped)
+            
+            pre_line_len = len(line_stripped)
 
             # 问题下来若干行为答案
             if prompt != '' and not line.endswith('：'):
