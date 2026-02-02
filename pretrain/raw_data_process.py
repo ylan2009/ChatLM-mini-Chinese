@@ -804,11 +804,6 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
             if all_cnt % 100000 == 0:
                 log.info(f"已处理 {all_cnt} 行，识别标题 {title_cnt} 个，内容行 {content_cnt} 行，保存 {saved_cnt} 条", save_to_file=True)
             
-            # prompt已经保存，但是仍有多余的行，这些行使得response的长度＞max_len，故跳过，不处理
-            if len(prompt) == 0 and pre_line_len > 0:
-                pre_line_len = len(line_stripped)
-                continue
-            
             # 确定问题：识别标题行
             # 1. 主标题：以英文冒号结尾，且上一行是空行（pre_line_len == 0）
             # 2. 子标题：以句号结尾，且长度较短（<= 20个字符）
