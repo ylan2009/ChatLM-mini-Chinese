@@ -1159,58 +1159,58 @@ if __name__ == '__main__':
     process_web_text(keep_start=5, response_less_word=15)
 
     # 2.
-    # process_bake_qa(response_less_word=15)
+    process_bake_qa(response_less_word=15)
 
     # 3.
-    # process_chinese_medical_datasets(response_less_word=15)
+    process_chinese_medical_datasets(response_less_word=15)
 
     # 4. 金融问答数据集质量太差了
     # process_finace_dataset(prompt_less_word=10, response_less_word=15)
 
     # 5.
-    # process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
+    process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
 
     # 6.
-    # process_belle_knowledge_enhanced_dataset(response_less_words=5)
+    process_belle_knowledge_enhanced_dataset(response_less_words=5)
 
-    # convert_wiki_to_simple_zh()
+    convert_wiki_to_simple_zh()
 
     # 7.
-    # process_zh_wiki_data_to_datset(groups_cnt=10000, max_len=512)
+    process_zh_wiki_data_to_datset(groups_cnt=10000, max_len=512)
 
     #=================================================================
 
     # merge
-    # merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
+    merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
         
     
-    # remove_dataset_duplicate_rows(groups_cnt=50000)
+    remove_dataset_duplicate_rows(groups_cnt=50000)
 
     # # shuffle
-    # shuffle_parquet_dataset(
-    #     parquet_file=PROJECT_ROOT + '/data/my_dataset.parquet', 
-    #     shuffle_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',  
-    #     seed=23333
-    # )
+    shuffle_parquet_dataset(
+        parquet_file=PROJECT_ROOT + '/data/my_dataset.parquet', 
+        shuffle_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',  
+        seed=23333
+    )
 
     # split train validated and test
-    # split_train_valid_test_datasets(
-    #         source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
-    #         max_len=320, 
-    #         groups_cnt=50000
-    #     )
+    split_train_valid_test_datasets(
+            source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
+            max_len=320, 
+            groups_cnt=50000
+        )
 
-    # parquet_to_text()
+    parquet_to_text()
 
-    # count_my_parquet_data(PROJECT_ROOT + '/data/my_dataset.parquet')
+    count_my_parquet_data(PROJECT_ROOT + '/data/my_dataset.parquet')
 
-    # dataset_length_cnt()
+    dataset_length_cnt()
 
-    # process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
+    process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
 
-    # count_my_parquet_data(PROJECT_ROOT + '/data/')
+    count_my_parquet_data(PROJECT_ROOT + '/data/')
 
-    # parquet_to_json()
-    # count_my_json_data()
+    parquet_to_json()
+    count_my_json_data()
 
 
