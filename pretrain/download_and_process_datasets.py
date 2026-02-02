@@ -77,13 +77,6 @@ DATASETS_CONFIG = {
         'note': '知乎KOL数据集需要从HuggingFace下载，使用datasets库',
         'hf_dataset': 'wangrui6/Zhihu-KOL',
     },
-    'wiki': {
-        'urls': {
-            'main': 'https://dumps.wikimedia.org/zhwiki/latest/zhwiki-latest-pages-articles-multistream.xml.bz2',
-        },
-        'save_dir': PROJECT_ROOT + '/data/raw_data/',
-        'note': '维基百科数据较大，需要使用WikiExtractor处理',
-    }
 }
 
 
@@ -265,21 +258,23 @@ def download_zhihu_kol() -> bool:
         return False
 
 
-def download_wiki() -> bool:
-    """下载维基百科数据"""
+def check_wiki_simple_file() -> bool:
+    """检查wiki.simple.txt文件是否存在"""
     log.info("=" * 60, save_to_file=True)
-    log.info("下载 Wikipedia 数据集", save_to_file=True)
+    log.info("检查 wiki.simple.txt 文件", save_to_file=True)
     log.info("=" * 60, save_to_file=True)
     
-    config = DATASETS_CONFIG['wiki']
-    ensure_dir(config['save_dir'])
+    wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
     
-    url = config['urls']['main']
-    save_path = os.path.join(config['save_dir'], 'zhwiki-latest-pages-articles-multistream.xml.bz2')
-    
-    log.info("注意: 维基百科数据文件较大（约2.7GB），下载可能需要较长时间", save_to_file=True)
-    
-    return download_file(url, save_path)
+    if os.path.exists(wiki_simple_file):
+        file_size = os.path.getsize(wiki_simple_file) / (1024 * 1024)  # MB
+        log.info(f"✓ 找到 wiki.simple.txt 文件: {wiki_simple_file}", save_to_file=True)
+        log.info(f"  文件大小: {file_size:.2f} MB", save_to_file=True)
+        return True
+    else:
+        log.warning(f"✗ 未找到 wiki.simple.txt 文件: {wiki_simple_file}", save_to_file=True)
+        log.warning("  请先使用 tokenize/process_zhwiki.py 处理维基百科数据", save_to_file=True)
+        return False
 
 
 def download_all_datasets() -> dict:
@@ -308,9 +303,9 @@ def download_all_datasets() -> dict:
     # 5. zhihu_kol
     results['zhihu_kol'] = download_zhihu_kol()
     
-    # 6. wiki (可选，因为文件很大)
-    log.info("是否下载维基百科数据？(文件约2.7GB)", save_to_file=True)
-    results['wiki'] = download_wiki()
+    # 6. wiki - 不需要下载，直接使用data/wiki.simple.txt
+    log.info("注意: Wiki数据使用项目中已有的 data/wiki.simple.txt 文件", save_to_file=True)
+    results['wiki'] = check_wiki_simple_file()
     
     return results
 
@@ -328,8 +323,7 @@ def process_all_datasets() -> None:
         process_chinese_medical_datasets,
         process_zhihu_kol_dataset,
         process_belle_knowledge_enhanced_dataset,
-        process_zh_wiki_data_to_datset,
-        convert_wiki_to_simple_zh,
+        process_wiki_simple_to_dataset,
         merge_dataset_as_single_file,
         remove_dataset_duplicate_rows,
         shuffle_parquet_dataset,
@@ -367,14 +361,14 @@ def process_all_datasets() -> None:
         log.info("处理 belle 数据集...", save_to_file=True)
         process_belle_knowledge_enhanced_dataset(response_less_words=5)
         
-        # 6. 处理wiki（如果已下载）
-        wiki_file = PROJECT_ROOT + '/data/raw_data/zhwiki-latest-pages-articles-multistream.xml.bz2'
-        if os.path.exists(wiki_file):
+        # 6. 处理wiki（使用已有的wiki.simple.txt）
+        wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
+        if os.path.exists(wiki_simple_file):
             log.info("处理 wiki 数据集...", save_to_file=True)
-            # 需要先用WikiExtractor提取，然后转换
-            log.info("注意: Wiki数据需要先使用WikiExtractor提取，请参考tokenize/process_zhwiki.py", save_to_file=True)
-            # convert_wiki_to_simple_zh()
-            # process_zh_wiki_data_to_datset(groups_cnt=10000, max_len=512)
+            process_wiki_simple_to_dataset(groups_cnt=10000, max_len=512)
+        else:
+            log.warning("未找到 wiki.simple.txt 文件，跳过wiki数据处理", save_to_file=True)
+            log.warning("如需处理wiki数据，请先运行: python tokenize/process_zhwiki.py", save_to_file=True)
         
         # 7. 合并所有数据集
         log.info("合并所有数据集...", save_to_file=True)
@@ -456,7 +450,7 @@ def main():
   3. chinese_medical - 医药领域问答（约79万条）
   4. belle - BELLE指令训练数据（约370万条）
   5. zhihu_kol - 知乎问答数据（约100万条）
-  6. wiki - 维基百科词条（约119万条，文件较大）
+  6. wiki - 维基百科词条（约119万条，使用已有的data/wiki.simple.txt）
         """
     )
     
@@ -469,7 +463,7 @@ def main():
     parser.add_argument(
         '--download',
         nargs='+',
-        choices=['webtext2019zh', 'baike_qa', 'chinese_medical', 'belle', 'zhihu_kol', 'wiki'],
+        choices=['webtext2019zh', 'baike_qa', 'chinese_medical', 'belle', 'zhihu_kol'],
         help='下载指定的数据集'
     )
     
@@ -482,7 +476,7 @@ def main():
     parser.add_argument(
         '--skip-wiki',
         action='store_true',
-        help='跳过维基百科数据集（文件较大）'
+        help='跳过维基百科数据集处理'
     )
     
     args = parser.parse_args()
@@ -517,8 +511,6 @@ def main():
                     download_belle_datasets()
                 elif dataset == 'zhihu_kol':
                     download_zhihu_kol()
-                elif dataset == 'wiki':
-                    download_wiki()
         
         # 处理数据集
         if args.process:

@@ -25,14 +25,20 @@ setup_datasets.bat
 pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 ```
 
-### 2. 下载所有数据集（包括维基百科）
+### 2. 下载所有数据集
 
 ```bash
 cd pretrain
 python download_and_process_datasets.py --download-all
 ```
 
-### 3. 下载数据集（不包括维基百科）
+**注意**：Wiki数据不需要下载，会直接使用项目中的 `data/wiki.simple.txt` 文件。如果该文件不存在，请先运行：
+```bash
+cd tokenize
+python process_zhwiki.py
+```
+
+### 3. 下载数据集（不包括wiki）
 
 ```bash
 python download_and_process_datasets.py --download webtext2019zh baike_qa chinese_medical belle zhihu_kol

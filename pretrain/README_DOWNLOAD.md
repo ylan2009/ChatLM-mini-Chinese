@@ -13,7 +13,7 @@
 | chinese_medical | 医药领域问答 | 79万 | 79万 | [Chinese-medical-dialogue-data](https://github.com/Toyhom/Chinese-medical-dialogue-data) |
 | zhihu_kol | 知乎问答数据 | 100万 | 97万 | [Zhihu-KOL](https://huggingface.co/datasets/wangrui6/Zhihu-KOL) |
 | belle | BELLE指令训练数据 | 370万 | 338万 | [BelleGroup](https://huggingface.co/BelleGroup) |
-| wiki | 维基百科词条 | - | 119万 | [zhwiki](https://dumps.wikimedia.org/zhwiki/) |
+| wiki | 维基百科词条 | - | 119万 | 使用项目中已有的 `data/wiki.simple.txt` |
 
 **总计**: 约1023万条数据（预训练集930万 + 评估集2.5万）
 
@@ -58,12 +58,19 @@ python download_and_process_datasets.py --download webtext2019zh baike_qa
 python download_and_process_datasets.py --download webtext2019zh baike_qa chinese_medical belle zhihu_kol
 ```
 
-### 跳过维基百科数据集
+### 跳过维基百科数据集处理
 
-维基百科数据文件较大（约2.7GB），如果不需要可以跳过：
+如果不需要处理维基百科数据，可以跳过：
 
 ```bash
-python download_and_process_datasets.py --download-all --skip-wiki
+python download_and_process_datasets.py --download-all --skip-wiki --process
+```
+
+**注意**：Wiki数据使用项目中已有的 `data/wiki.simple.txt` 文件，不需要下载。如果该文件不存在，请先运行：
+
+```bash
+cd tokenize
+python process_zhwiki.py
 ```
 
 ### 只处理已下载的数据集
