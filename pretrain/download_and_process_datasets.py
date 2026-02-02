@@ -65,11 +65,11 @@ DATASETS_CONFIG = {
     },
     'belle': {
         'urls': {
-            'belle_1m': 'https://huggingface.co/datasets/BelleGroup/train_1M_CN/resolve/main/Belle_open_source_1M.json',
+            'belle_1m': 'https://huggingface.co/datasets/BelleGroup/train_1M_CN/resolve/main/train_1M_CN.json',
             'belle_2m': 'https://huggingface.co/datasets/BelleGroup/train_2M_CN/resolve/main/train_2M_CN.json',
             'belle_3.5m': 'https://huggingface.co/datasets/BelleGroup/train_3.5M_CN/resolve/main/train_3.5M_CN.json',
-            'belle_0.5m': 'https://huggingface.co/datasets/BelleGroup/train_0.5M_CN/resolve/main/Belle_open_source_0.5M.json',
-            'belle_0.8m': 'https://huggingface.co/datasets/BelleGroup/train_0.8M_CN/resolve/main/train_0.8M_CN.json',
+            'belle_0.5m': 'https://huggingface.co/datasets/BelleGroup/train_0.5M_CN/tree/main/Belle_open_source_0.5M.json',
+            'belle_0.8m': 'https://huggingface.co/datasets/BelleGroup/multiturn_chat_0.8M/tree/main/multiturn_chat_0.8M.json',
         },
         'save_dir': PROJECT_ROOT + '/data/raw_data/bell_open_source/',
     },
