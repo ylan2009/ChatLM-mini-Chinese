@@ -711,10 +711,16 @@ def process_zh_wiki_data_to_datset(groups_cnt: int=10000, max_len: int=512, seed
     log.info("merge into file: {}, 全部数据共{}行，清洗后剩余{}行".format(zhwiki_simple_file, all_cnt, keep_cnt), save_to_file=True)
 
 
-def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed: int=23333) -> None:
+def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed: int=23333, skip_clean: bool=True) -> None:
     '''
     将wiki.simple.txt转换为问答数据集
     注意：wiki.simple.txt已经是简体中文，不需要再转换
+    
+    Args:
+        groups_cnt: 每次写入parquet文件的行数
+        max_len: 答案的最大长度
+        seed: 随机种子
+        skip_clean: 是否跳过数据清洗（默认True，直接使用wiki.simple.txt的原始内容）
     '''
     wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
     zhwiki_simple_parquet = PROJECT_ROOT + '/data/my_data/wiki_zh_simple.parquet'
@@ -755,10 +761,17 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
         '你能告诉我{}是什么吗？',
     ]
 
-    def process_line(line: str) -> str:
+    def process_line(line: str, skip_clean: bool) -> str:
         '''
         处理一行文本（wiki.simple.txt已经是简体中文，只需要基本清洗）
+        
+        Args:
+            line: 输入行
+            skip_clean: 是否跳过清洗（True则直接返回原始内容）
         '''
+        if skip_clean:
+            return line  # 直接返回原始内容，不做任何处理
+        
         line = convert_en_punctuation_to_zh_punct(line)  # 英文标点转换为中文标点
         line = remove_duplicate_punctuation(line)  # 删除中文空括号和重复的标点
         return line
@@ -794,14 +807,16 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
                 continue
             
             # 清洗一行（只对内容行进行清洗）
-            line = process_line(line_stripped)
+            line = process_line(line_stripped, skip_clean)
             
             pre_line_len = len(line_stripped)
 
             # 问题下来若干行为答案
-            if prompt != '' and not line.endswith('：'):
-                # 其实，pre_line_len已经是len(line.strip())了，如果len(line.strip())=0，既是当前行是0，则不管答案长度够不够，都需要保存了
-                if len(response) + len(line) <= max_len and pre_line_len != 0: 
+            # 注意：如果skip_clean=True，使用英文冒号；否则使用中文冒号（因为清洗会转换）
+            colon_to_check = ':' if skip_clean else '：'
+            if prompt != '' and not line.endswith(colon_to_check):
+                # 其实，pre_line_len已经是len(line_stripped)了，如果len(line_stripped)=0，既是当前行是0，则不管答案长度够不够，都需要保存了
+                if len(response) + len(line) <= max_len and pre_line_len != 0:
                     response = '{}{}'.format(response, line)
                 elif len(response) + len(line) > max_len or pre_line_len == 0:
                     # 长度超了或者当前的百科已经结束，保存一条样例
