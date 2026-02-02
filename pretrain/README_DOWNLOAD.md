@@ -22,7 +22,7 @@
 ### 1. 安装依赖
 
 ```bash
-pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented
+pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 ```
 
 ### 2. 下载所有数据集
@@ -225,6 +225,19 @@ A: 脚本会在处理完成后自动统计数据量，也可以手动运行：
 from raw_data_process import count_my_parquet_data
 count_my_parquet_data(PROJECT_ROOT + '/data/')
 ```
+
+### Q5: 出现 "cannot import name 'Logger'" 错误怎么办？
+
+A: 这是因为系统中安装了第三方 `logger` 包导致命名冲突。解决方案：
+```bash
+# 方案1: 卸载冲突的包（如果不需要）
+pip uninstall logger
+
+# 方案2: 已经修复，确保使用最新代码
+git pull origin main
+```
+
+详细说明请查看 [IMPORT_FIX.md](IMPORT_FIX.md)
 
 ## 📊 数据统计
 

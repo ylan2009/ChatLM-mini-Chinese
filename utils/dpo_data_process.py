@@ -13,10 +13,10 @@ import pandas as pd
 import multiprocessing as mp
 
 from model.infer import ChatBot
-from logger import Logger
+from utils.logger import Logger
 from config import PROJECT_ROOT, InferConfig
 
-from utils.raw_data_process import delete_file
+from pretrain.raw_data_process import delete_file
 
 log = Logger('data_process', save2file=True, file_name=PROJECT_ROOT + '/logs/raw_data_process.log')
 

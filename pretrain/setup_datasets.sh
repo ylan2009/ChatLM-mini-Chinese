@@ -19,7 +19,7 @@ echo ""
 
 # 检查并安装依赖
 echo "检查依赖库..."
-pip3 install -q requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented rich matplotlib
+pip3 install -q requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 
 echo "✓ 依赖库安装完成"
 echo ""

@@ -34,7 +34,7 @@ import ujson
 sys.path.extend(['.', '..'])
 
 from config import PROJECT_ROOT
-from logger import Logger
+from utils.logger import Logger
 
 # 初始化日志
 log = Logger('download_datasets', save2file=True, file_name=PROJECT_ROOT + '/logs/download_datasets.log')

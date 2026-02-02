@@ -19,7 +19,7 @@ from opencc import OpenCC
 import sys
 sys.path.extend(['.','..'])
 
-from logger import Logger
+from utils.logger import Logger
 from config import PROJECT_ROOT
 from utils.functions import get_path_of_suffix_files, DropDatasetDuplicate
 

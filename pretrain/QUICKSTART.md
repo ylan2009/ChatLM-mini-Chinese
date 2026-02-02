@@ -22,7 +22,7 @@ setup_datasets.bat
 ### 1. 安装依赖
 
 ```bash
-pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented rich matplotlib
+pip install requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 ```
 
 ### 2. 下载所有数据集（包括维基百科）

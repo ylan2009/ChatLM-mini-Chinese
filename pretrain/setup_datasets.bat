@@ -19,7 +19,7 @@ echo.
 
 REM 检查并安装依赖
 echo 检查依赖库...
-pip install -q requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented rich matplotlib
+pip install -q requests tqdm ujson pandas pyarrow fastparquet datasets opencc-python-reimplemented colorlog rich matplotlib
 
 echo √ 依赖库安装完成
 echo.
