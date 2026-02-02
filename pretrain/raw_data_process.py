@@ -205,6 +205,22 @@ def process_web_text(keep_start: int=5, response_less_word: int=10) -> None:
         read_file = PROJECT_ROOT + file_name
 
         read_and_write_template(read_file, save_file_name, process_function)
+        
+        # 输出当前文件处理完成后的前10行数据
+        log.info('=' * 80, save_to_file=True)
+        log.info('文件 {} 处理完成，查看保存文件的前10行数据'.format(file_name), save_to_file=True)
+        try:
+            pf = pq.read_table(save_file_name)
+            sample_size = min(10, pf.num_rows)
+            for idx in range(sample_size):
+                prompt = pf['prompt'][idx].as_py()
+                response = pf['response'][idx].as_py()
+                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt[:100] if len(prompt) > 100 else prompt), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx + 1, response[:100] if len(response) > 100 else response), save_to_file=True)
+                log.info('-' * 80, save_to_file=True)
+        except Exception as e:
+            log.error('读取样例数据失败：{}'.format(str(e)), save_to_file=True)
+        log.info('=' * 80, save_to_file=True)
 
 
 def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_cnt: int=10000) -> None:
@@ -266,6 +282,10 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
                 log.error('无法识别文件列名: {}, 列名为: {}'.format(file, pf.column_names), save_to_file=True)
                 continue
             
+            # 用于存储当前文件的前10行数据
+            file_sample_rows = []
+            file_row_cnt = 0
+            
             for prompt, response in progress.track(zip(pf[prompt_col], pf[response_col]), total=pf.num_rows):
                 all_cnt += 1
                 prompt, response = prompt.as_py(), response.as_py()
@@ -284,12 +304,26 @@ def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_c
                     "response": response,
                 }
                 append(write_dict)
+                
+                # 保存当前文件的前10行样例
+                if file_row_cnt < 10:
+                    file_sample_rows.append(write_dict)
+                    file_row_cnt += 1
 
                 if len(cur_rows) >= group_cnt:
                     df = pd.DataFrame(cur_rows)
                     write_single_parquet_file(save_file_name, df)
                     cur_rows = []
                     append = cur_rows.append
+            
+            # 输出当前文件处理完成后的前10行数据
+            log.info('=' * 80, save_to_file=True)
+            log.info('文件 {} 处理完成，前{}行数据如下：'.format(file, len(file_sample_rows)), save_to_file=True)
+            for idx, row in enumerate(file_sample_rows, 1):
+                log.info('第{}行 - prompt: {}'.format(idx, row['prompt'][:100] if len(row['prompt']) > 100 else row['prompt']), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx, row['response'][:100] if len(row['response']) > 100 else row['response']), save_to_file=True)
+                log.info('-' * 80, save_to_file=True)
+            log.info('=' * 80, save_to_file=True)
                     
         except Exception as e:
             log.error('处理文件异常：{}, file:{}'.format(str(e), file), save_to_file=True)
@@ -399,6 +433,22 @@ def process_chinese_medical_datasets(response_less_word: int=15) -> None:
         read_file = file_name        
 
         read_and_write_template(read_file, save_file, process_function)
+        
+        # 输出当前文件处理完成后的前10行数据
+        log.info('=' * 80, save_to_file=True)
+        log.info('文件 {} 处理完成，查看保存文件的前10行数据'.format(file_name), save_to_file=True)
+        try:
+            pf = pq.read_table(save_file)
+            sample_size = min(10, pf.num_rows)
+            for idx in range(sample_size):
+                prompt = pf['prompt'][idx].as_py()
+                response = pf['response'][idx].as_py()
+                log.info('第{}行 - prompt: {}'.format(idx + 1, prompt[:100] if len(prompt) > 100 else prompt), save_to_file=True)
+                log.info('第{}行 - response: {}'.format(idx + 1, response[:100] if len(response) > 100 else response), save_to_file=True)
+                log.info('-' * 80, save_to_file=True)
+        except Exception as e:
+            log.error('读取样例数据失败：{}'.format(str(e)), save_to_file=True)
+        log.info('=' * 80, save_to_file=True)
 
 
 def process_finace_dataset(prompt_less_word: int=10, response_less_word: int=15) -> None:
@@ -502,6 +552,10 @@ def process_zhihu_kol_dataset(prompt_less_word: int=4, response_less_word: int=1
     for file in file_names:
         pf = pq.read_table(file)
         log.info('process file: {}'.format(file), save_to_file=True)
+        
+        # 用于存储当前文件的前10行数据
+        file_sample_rows = []
+        file_row_cnt = 0
 
         for prompt, response in progress.track(zip(pf['INSTRUCTION'], pf['RESPONSE']), total=pf.num_rows):
             all_cnt += 1
@@ -519,12 +573,26 @@ def process_zhihu_kol_dataset(prompt_less_word: int=4, response_less_word: int=1
                 'response': response,
             }
             append(write_dict)
+            
+            # 保存当前文件的前10行样例
+            if file_row_cnt < 10:
+                file_sample_rows.append(write_dict)
+                file_row_cnt += 1
 
             if len(cur_rows) >= group_cnt:
                 df = pd.DataFrame(cur_rows)
                 write_single_parquet_file(save_file, df)
                 cur_rows = []
                 append = cur_rows.append
+        
+        # 输出当前文件处理完成后的前10行数据
+        log.info('=' * 80, save_to_file=True)
+        log.info('文件 {} 处理完成，前{}行数据如下：'.format(file, len(file_sample_rows)), save_to_file=True)
+        for idx, row in enumerate(file_sample_rows, 1):
+            log.info('第{}行 - prompt: {}'.format(idx, row['prompt'][:100] if len(row['prompt']) > 100 else row['prompt']), save_to_file=True)
+            log.info('第{}行 - response: {}'.format(idx, row['response'][:100] if len(row['response']) > 100 else row['response']), save_to_file=True)
+            log.info('-' * 80, save_to_file=True)
+        log.info('=' * 80, save_to_file=True)
             
     # end for 
     if len(cur_rows) > 0:
