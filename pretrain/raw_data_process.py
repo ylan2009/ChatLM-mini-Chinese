@@ -501,9 +501,6 @@ def process_belle_knowledge_enhanced_dataset(response_less_words: int=15, group_
     处理belle开源的知识增强数据集
     '''
     file_names = [
-        '/data/raw_data/bell_open_source/train_2M_CN.json',
-        '/data/raw_data/bell_open_source/train_0.8M_CN.json',
-        '/data/raw_data/bell_open_source/Belle_open_source_1M.json',
     ]
 
     save_file = PROJECT_ROOT + '/data/my_data/my_belll_3M_cn.parquet'

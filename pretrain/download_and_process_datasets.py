@@ -64,6 +64,10 @@ DATASETS_CONFIG = {
             'BelleGroup/train_1M_CN',
             'BelleGroup/train_2M_CN',
             'BelleGroup/train_3.5M_CN',
+
+            'BelleGroup/generated_chat_0.4M',
+            'BelleGroup/train_0.5M_CN'
+            
         ],
         'save_dir': PROJECT_ROOT + '/data/raw_data/belle/',
     },
@@ -410,7 +414,7 @@ def process_all_datasets() -> None:
         
         # 5. 处理belle
         log.info("处理 belle 数据集...", save_to_file=True)
-        process_belle_knowledge_enhanced_dataset(response_less_words=5)
+        # process_belle_knowledge_enhanced_dataset(response_less_words=5)
         
         # 6. 处理wiki（使用已有的wiki.simple.txt）
         wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
@@ -459,7 +463,7 @@ def process_all_datasets() -> None:
         
         # 14. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
-        process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
+        # process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
         
         # 15. 转换为JSON格式
         log.info("转换为JSON格式...", save_to_file=True)
