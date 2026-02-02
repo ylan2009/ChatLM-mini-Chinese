@@ -207,62 +207,101 @@ def process_web_text(keep_start: int=5, response_less_word: int=10) -> None:
         read_and_write_template(read_file, save_file_name, process_function)
 
 
-def process_bake_qa(response_less_word: int=15) -> None:
+def process_bake_qa(response_less_word: int=15, prompt_less_word: int=3, group_cnt: int=10000) -> None:
     '''
-    处理147万百度知道知识类数据集
+    处理belle数据集（parquet格式）
 
     '''
-    file_names = [
-        '/data/raw_data/baike_qa_train.json',
-        '/data/raw_data/baike_qa_valid.json',
-    ]
+    # 获取belle目录下的所有parquet文件
+    belle_data_path = PROJECT_ROOT + '/data/raw_data/belle'
+    file_names = []
+    suffix = '.parquet'
+    for root, _, files in walk(belle_data_path):
+        for file in files:
+            if file.endswith(suffix) and not file.endswith('.nas_pro_downloading'):
+                file_names.append(root + '/' + file)
 
     save_file_name = PROJECT_ROOT + '/data/my_data/my_baike_qa.parquet'
     # 后续append写入，存在文件先删除
     if exists(save_file_name): 
         assert delete_file(save_file_name)
 
-    def process_function(line: str) -> dict:
-        item = ujson.loads(line)
-
-        if len(item['answer']) < response_less_word: 
-            return None
-
-        # 数据清洗
-        prompt = ''
-        if get_sentences_dice_similarity(item['title'], item['desc']) >= 0.90:
-            # title 和desc 相似度过高，只用title作为问题
-            prompt = item['title']
-        else:
-            # title 和desc拼接形成问题
-            prompt = "{}{}".format(item['title'], item['desc'])
-
-        # 删除\r
-        prompt = prompt.replace('\r','') 
+    def process_function(sentence: str) -> str:
+        '''
+        针对一个句子的数据清洗
+        '''
+        # 删除\\r
+        sentence = sentence.replace('\\r','') 
 
         # 删除重复的标点符号
-        prompt = remove_duplicate_punctuation(prompt)
+        sentence = remove_duplicate_punctuation(sentence)
 
-        # 去除重复的标点符号
-        response = item['answer'].replace('\r','')
-        response = remove_duplicate_punctuation(response)
+        return sentence
 
-        # 剔除问题和答案过短的数据
-        if len(prompt) < 3 or len(response) < response_less_word:
-            return None
+    all_cnt, keep_cnt = 0, 0
+    cur_rows = []
+    append = cur_rows.append
+    
+    for file in file_names:
+        log.info('process file: {}'.format(file), save_to_file=True)
         
-        write_dict = {
-                "prompt": prompt,
-                "response": response,
-            }
+        try:
+            pf = pq.read_table(file)
+            
+            # 尝试不同的列名组合
+            prompt_col = None
+            response_col = None
+            
+            # 检查可能的列名
+            if 'instruction' in pf.column_names and 'output' in pf.column_names:
+                prompt_col = 'instruction'
+                response_col = 'output'
+            elif 'INSTRUCTION' in pf.column_names and 'RESPONSE' in pf.column_names:
+                prompt_col = 'INSTRUCTION'
+                response_col = 'RESPONSE'
+            elif 'prompt' in pf.column_names and 'response' in pf.column_names:
+                prompt_col = 'prompt'
+                response_col = 'response'
+            else:
+                log.error('无法识别文件列名: {}, 列名为: {}'.format(file, pf.column_names), save_to_file=True)
+                continue
+            
+            for prompt, response in progress.track(zip(pf[prompt_col], pf[response_col]), total=pf.num_rows):
+                all_cnt += 1
+                prompt, response = prompt.as_py(), response.as_py()
+                
+                # 数据清洗
+                prompt = process_function(prompt)
+                response = process_function(response)
 
-        return write_dict
+                # 剔除问题和答案过短的数据
+                if len(prompt) < prompt_less_word or len(response) < response_less_word:
+                    continue
+                
+                keep_cnt += 1
+                write_dict = {
+                    "prompt": prompt,
+                    "response": response,
+                }
+                append(write_dict)
 
-    for file_name in file_names:
-        read_file = PROJECT_ROOT + file_name
-        
-        read_and_write_template(read_file, save_file_name, process_function)
+                if len(cur_rows) >= group_cnt:
+                    df = pd.DataFrame(cur_rows)
+                    write_single_parquet_file(save_file_name, df)
+                    cur_rows = []
+                    append = cur_rows.append
+                    
+        except Exception as e:
+            log.error('处理文件异常：{}, file:{}'.format(str(e), file), save_to_file=True)
+            continue
+    
+    # end for 
+    if len(cur_rows) > 0:
+        df = pd.DataFrame(cur_rows)
+        write_single_parquet_file(save_file_name, df)
+        cur_rows = []
 
+    log.info('save file to: {}, 全部数据共{}行，清洗后剩余{}行'.format(save_file_name, all_cnt, keep_cnt), save_to_file=True)
   
 def repair_line_error_csv_file(raw_csv_file: str, save_suffix: str, read_encoding: str='utf-8', ) -> None:
     '''

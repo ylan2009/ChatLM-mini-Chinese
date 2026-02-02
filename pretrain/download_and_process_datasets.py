@@ -402,7 +402,7 @@ def process_all_datasets() -> None:
         
         # 2. 处理baike_qa
         # log.info("处理 baike_qa 数据集...", save_to_file=True)
-        # process_bake_qa(response_less_word=15)
+        process_bake_qa(response_less_word=15)
         
         # 3. 处理chinese_medical
         log.info("处理 chinese_medical 数据集...", save_to_file=True)
