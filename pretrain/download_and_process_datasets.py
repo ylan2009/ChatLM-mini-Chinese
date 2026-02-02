@@ -288,8 +288,8 @@ def download_all_datasets() -> dict:
     
     log.info("开始下载所有数据集...", save_to_file=True)
     
-    # 1. webtext2019zh
-    results['webtext2019zh'] = download_webtext2019zh()
+    # # 1. webtext2019zh
+    # results['webtext2019zh'] = download_webtext2019zh()
     
     # 2. baike_qa
     results['baike_qa'] = download_baike_qa()
@@ -342,8 +342,8 @@ def process_all_datasets() -> None:
     
     try:
         # 1. 处理webtext2019zh
-        log.info("处理 webtext2019zh 数据集...", save_to_file=True)
-        process_web_text(keep_start=5, response_less_word=15)
+        # log.info("处理 webtext2019zh 数据集...", save_to_file=True)
+        # process_web_text(keep_start=5, response_less_word=15)
         
         # 2. 处理baike_qa
         log.info("处理 baike_qa 数据集...", save_to_file=True)
