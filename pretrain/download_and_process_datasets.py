@@ -400,28 +400,28 @@ def process_all_datasets() -> None:
 
         # 1. 处理chinese_medical
         log.info("处理 chinese_medical 数据集...", save_to_file=True)
-        process_chinese_medical_datasets(response_less_word=15)
+        # process_chinese_medical_datasets(response_less_word=15)
         
         # 2. 处理zhihu_kol
         log.info("处理 zhihu_kol 数据集...", save_to_file=True)
-        process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
+        # process_zhihu_kol_dataset(prompt_less_word=4, response_less_word=10)
         
         # 3. belle
         log.info("处理 belle 数据集...", save_to_file=True)
-        process_belle(response_less_word=15)
+        # process_belle(response_less_word=15)
         
         # 4. 处理wiki（使用已有的wiki.simple.txt）
         wiki_simple_file = PROJECT_ROOT + '/data/wiki.simple.txt'
         if os.path.exists(wiki_simple_file):
             log.info("处理 wiki 数据集...", save_to_file=True)
-            process_wiki_simple_to_dataset(groups_cnt=10000, max_len=512)
+            # process_wiki_simple_to_dataset(groups_cnt=10000, max_len=512)
         else:
             log.warning("未找到 wiki.simple.txt 文件，跳过wiki数据处理", save_to_file=True)
             log.warning("如需处理wiki数据，请先运行: python tokenize/process_zhwiki.py", save_to_file=True)
         
         # 5. 合并所有数据集
         log.info("合并所有数据集...", save_to_file=True)
-        merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
+        # merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
         
         # 6. 去重（优化版：分批处理，减少内存占用）
         log.info("去除重复数据...", save_to_file=True)
@@ -459,7 +459,7 @@ def process_all_datasets() -> None:
         
         # 11. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
-        # process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
+        process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
         
         # 12. 转换为JSON格式
         log.info("转换为JSON格式...", save_to_file=True)

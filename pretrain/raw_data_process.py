@@ -1560,9 +1560,14 @@ def parquet_to_text(sep='[SEP]', buffer_size: int=50000) -> None:
             f_write.writelines(cur_rows)
             cur_rows = []
 
-def parquet_to_json() -> None:
+def parquet_to_json(buffer_size: int=10000) -> None:
     '''
     将parquet文件转换为json
+    
+    优化说明：
+    1. 使用流式写入，避免将所有数据加载到内存
+    2. 分批收集数据，达到 buffer_size 时写入文件
+    3. 手动构建 JSON 格式，避免 ujson.dump 的内存开销
     '''
     parquet_file = PROJECT_ROOT + '/data/my_finetune_data_zh.parquet'
     json_file = PROJECT_ROOT + '/data/sft_train.json'
@@ -1571,35 +1576,110 @@ def parquet_to_json() -> None:
         assert delete_file(json_file)
 
     source_pf = ParquetFile(parquet_file)
-    cur_rows = []
-    append = cur_rows.append
-   
-    for pf_chunk in progress.track(source_pf):
-        for rows in pf_chunk.iter_row_groups():
-            for prompt, response in zip(rows['prompt'], rows['response']):
-                if len(response) == 0 or len(prompt) == 0: continue
-                append({
-                    'prompt': str(prompt),
-                    'response': str(response),
-                })
-
+    
+    log.info(f'开始转换 parquet 到 json: {parquet_file} -> {json_file}', save_to_file=True)
+    
+    total_count = 0
+    is_first_batch = True
+    
     with open(json_file, 'w', encoding='utf-8') as f:
-        ujson.dump(cur_rows, f, indent=4, ensure_ascii=False)
+        # 写入 JSON 数组开始符号
+        f.write('[\n')
+        
+        cur_rows = []
+        
+        for pf_chunk in progress.track(source_pf, description="转换中..."):
+            for rows in pf_chunk.iter_row_groups():
+                # 使用向量化操作
+                prompts = rows['prompt'].to_pylist()
+                responses = rows['response'].to_pylist()
+                
+                for prompt, response in zip(prompts, responses):
+                    # 过滤空数据
+                    if len(response) == 0 or len(prompt) == 0:
+                        continue
+                    
+                    cur_rows.append({
+                        'prompt': str(prompt),
+                        'response': str(response),
+                    })
+                    
+                    # 达到缓冲区大小时写入
+                    if len(cur_rows) >= buffer_size:
+                        for i, row in enumerate(cur_rows):
+                            # 如果不是第一条数据，前面加逗号
+                            if not is_first_batch or i > 0:
+                                f.write(',\n')
+                            # 写入 JSON 对象（缩进格式）
+                            f.write('    ')
+                            ujson.dump(row, f, ensure_ascii=False)
+                            is_first_batch = False
+                        
+                        total_count += len(cur_rows)
+                        cur_rows = []
+        
+        # 写入剩余数据
+        if cur_rows:
+            for i, row in enumerate(cur_rows):
+                if not is_first_batch or i > 0:
+                    f.write(',\n')
+                f.write('    ')
+                ujson.dump(row, f, ensure_ascii=False)
+                is_first_batch = False
+            total_count += len(cur_rows)
+        
+        # 写入 JSON 数组结束符号
+        f.write('\n]')
+    
+    log.info(f'转换完成！共转换 {total_count} 条数据', save_to_file=True)
+    log.info(f'JSON 文件已保存到: {json_file}', save_to_file=True)
 
 def dataset_length_cnt() -> None:
-
-    dataset_file = PROJECT_ROOT +  '/data/my_dataset.shuffle.parquet'
-    parquet_table = pq.read_table(dataset_file)
-
-    que_len_dict, ans_len_dict = defaultdict(int), defaultdict(int)
+    '''
+    统计数据集中 prompt 和 response 的长度分布
     
-    for prompt, response in progress.track(zip(parquet_table['prompt'], parquet_table['response']), total=parquet_table.num_rows):
-
-        prompt, response = prompt.as_py(), response.as_py()
-
-        que_len_dict[len(prompt)] += 1
-        ans_len_dict[len(response)] += 1
-
+    优化说明：
+    1. 使用 ParquetFile 迭代器分批读取，避免一次性加载整个文件
+    2. 流式统计，内存占用稳定
+    3. 添加进度显示和详细日志
+    '''
+    dataset_file = PROJECT_ROOT + '/data/my_dataset.shuffle.parquet'
+    
+    if not exists(dataset_file):
+        log.error(f'数据集文件不存在: {dataset_file}', save_to_file=True)
+        return
+    
+    log.info(f'开始统计数据集长度分布: {dataset_file}', save_to_file=True)
+    
+    # 使用 ParquetFile 迭代器分批读取
+    source_pf = ParquetFile(dataset_file)
+    
+    que_len_dict, ans_len_dict = defaultdict(int), defaultdict(int)
+    total_rows = 0
+    
+    # 分批处理
+    with progress.Progress() as prog:
+        task = prog.add_task("[cyan]统计长度分布...", total=None)
+        
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                # 使用向量化操作
+                prompts = rows['prompt'].to_pylist()
+                responses = rows['response'].to_pylist()
+                
+                for prompt, response in zip(prompts, responses):
+                    prompt = str(prompt)
+                    response = str(response)
+                    
+                    que_len_dict[len(prompt)] += 1
+                    ans_len_dict[len(response)] += 1
+                    total_rows += 1
+                
+                prog.update(task, advance=len(prompts))
+    
+    log.info(f'统计完成！共处理 {total_rows} 条数据', save_to_file=True)
+    
+    # 转换为列表格式
     que_len, ans_len = [], []
     for k, v in que_len_dict.items():
         que_len.append([k, v])
@@ -1653,12 +1733,20 @@ def dataset_length_cnt() -> None:
     plt.subplot(2, 2, 4)
     plot_sub_bar(plt, le320_pd['length'], le320_pd['count'], title='response length < 320', color='limegreen')
 
-    plt.savefig(PROJECT_ROOT +  '/img/sentence_length.png')
+    output_file = PROJECT_ROOT + '/img/sentence_length.png'
+    plt.savefig(output_file)
+    log.info(f'长度分布图已保存到: {output_file}', save_to_file=True)
     plt.show()
 
 def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, group_cnt: int=50000) -> None:
     '''
     处理belle开源的知识增强数据集
+    
+    优化说明：
+    1. 使用 ParquetFile 迭代器分批读取，避免一次性加载整个文件到内存
+    2. 使用向量化操作替代 iterrows()，提升处理速度
+    3. 提取公共过滤函数，减少重复代码
+    4. 添加进度显示
     '''
     # 使用data/raw_data/belle目录下的指定parquet文件
     raw_data_dir = PROJECT_ROOT + '/data/raw_data/belle'
@@ -1675,74 +1763,102 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
         f'{raw_data_dir}/train_2M_CN.parquet'
     ]
     
+    # 翻译相关关键词（预编译，避免重复创建）
+    translate_keywords = ('翻译', '英译', '译英', '中译', '译中', '汉译', '译汉')
+    
+    def should_filter_data(prompt: str, response: str) -> bool:
+        """
+        判断数据是否应该被过滤掉
+        返回 True 表示应该过滤（不保留），False 表示保留
+        """
+        # 剔除翻译任务
+        if 'translate' in prompt.lower():
+            return True
+        for word in translate_keywords:
+            if word in prompt:
+                return True
+        
+        # 删除表格类任务
+        if '表格' in prompt or '-----' in prompt or '-----' in response:
+            return True
+        
+        # 长度过滤
+        if len(prompt) > max_len or len(response) > max_len:
+            return True
+        
+        return False
+    
     log.info(f'将处理 {len(parquet_files)} 个parquet文件', save_to_file=True)
     
     all_cnt = 0
     keep_cnt = 0
     
-    for file_path in parquet_files:
-        log.info(f'处理文件: {file_path}', save_to_file=True)
+    for file_idx, file_path in enumerate(parquet_files, 1):
+        log.info(f'[{file_idx}/{len(parquet_files)}] 处理文件: {file_path}', save_to_file=True)
+        
+        if not exists(file_path):
+            log.warning(f'文件不存在，跳过: {file_path}', save_to_file=True)
+            continue
         
         try:
-            # 读取parquet文件
-            table = pq.read_table(file_path)
-            pf = table.to_pandas()
+            # 使用 ParquetFile 迭代器分批读取
+            source_pf = ParquetFile(file_path)
             
-            # 识别列名
-            columns = pf.columns.tolist()
+            # 先读取一小部分数据来识别列名
+            first_chunk = next(source_pf.iter_row_groups())
+            columns = first_chunk.columns.tolist()
             log.info(f'文件列名: {columns}', save_to_file=True)
             
-            prompt_col = None
-            response_col = None
+            # 重新创建迭代器（因为已经消耗了第一个chunk）
+            source_pf = ParquetFile(file_path)
+            
+            file_sample_rows = []
+            batch_data = []
+            file_all_cnt = 0
+            file_keep_cnt = 0
             
             # 检查是否是conversations格式
             if 'conversations' in columns:
-                # 处理conversations格式
-                file_sample_rows = []
-                file_row_cnt = 0
-                batch_data = []
+                log.info('检测到 conversations 格式', save_to_file=True)
                 
-                for idx, row in pf.iterrows():
-                    conversations = row['conversations']
-                    if not isinstance(conversations, list):
-                        continue
+                # 分批处理
+                with progress.Progress() as prog:
+                    task = prog.add_task(f"[cyan]处理 {file_path.split('/')[-1]}...", total=None)
                     
-                    # 提取所有human和assistant的对话
-                    for i in range(len(conversations) - 1):
-                        if conversations[i].get('from') == 'human' and conversations[i+1].get('from') == 'assistant':
-                            all_cnt += 1
-                            prompt = conversations[i].get('value', '')
-                            response = conversations[i+1].get('value', '')
+                    for pf_chunk in source_pf:
+                        for rows in pf_chunk.iter_row_groups():
+                            # 获取 conversations 列
+                            conversations_list = rows['conversations'].to_pylist()
                             
-                            # 剔除翻译任务
-                            if 'translate' in prompt.lower():
-                                continue
-                            for word in ('翻译', '英译', '译英', '中译', '译中', '汉译', '译汉'):
-                                if word in prompt:
+                            for conversations in conversations_list:
+                                if not isinstance(conversations, list):
                                     continue
-                            
-                            # 删除表格类任务
-                            if '表格' in prompt or '-----' in prompt or '-----' in response:
-                                continue
-                            
-                            # 长度过滤
-                            if len(prompt) > max_len or len(response) > max_len:
-                                continue
-                            
-                            keep_cnt += 1
-                            
-                            # 收集前10行样例
-                            if file_row_cnt < 10:
-                                file_sample_rows.append({'prompt': prompt, 'response': response})
-                                file_row_cnt += 1
-                            
-                            batch_data.append({'prompt': prompt, 'response': response})
-                            
-                            # 批量写入
-                            if len(batch_data) >= group_cnt:
-                                df = pd.DataFrame(batch_data)
-                                write(save_file, df, append=exists(save_file), compression='GZIP')
-                                batch_data = []
+                                
+                                # 提取所有human和assistant的对话
+                                for i in range(len(conversations) - 1):
+                                    if conversations[i].get('from') == 'human' and conversations[i+1].get('from') == 'assistant':
+                                        file_all_cnt += 1
+                                        prompt = conversations[i].get('value', '')
+                                        response = conversations[i+1].get('value', '')
+                                        
+                                        # 过滤数据
+                                        if should_filter_data(prompt, response):
+                                            continue
+                                        
+                                        file_keep_cnt += 1
+                                        
+                                        # 收集前10行样例
+                                        if len(file_sample_rows) < 10:
+                                            file_sample_rows.append({'prompt': prompt, 'response': response})
+                                        
+                                        batch_data.append({'prompt': prompt, 'response': response})
+                                        
+                                        # 批量写入
+                                        if len(batch_data) >= group_cnt:
+                                            df = pd.DataFrame(batch_data)
+                                            write(save_file, df, append=exists(save_file), compression='GZIP')
+                                            batch_data = []
+                                            prog.update(task, advance=group_cnt)
                 
                 # 写入剩余数据
                 if batch_data:
@@ -1751,6 +1867,9 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
                 
             else:
                 # 识别普通格式的列名
+                prompt_col = None
+                response_col = None
+                
                 for col in columns:
                     col_lower = col.lower()
                     if col_lower in ['instruction', 'prompt', 'input', 'question']:
@@ -1764,65 +1883,73 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
                 
                 log.info(f'使用列: prompt={prompt_col}, response={response_col}', save_to_file=True)
                 
-                file_sample_rows = []
-                file_row_cnt = 0
-                batch_data = []
-                
-                for idx, row in pf.iterrows():
-                    all_cnt += 1
-                    prompt = str(row[prompt_col])
-                    response = str(row[response_col])
+                # 分批处理
+                with progress.Progress() as prog:
+                    task = prog.add_task(f"[cyan]处理 {file_path.split('/')[-1]}...", total=None)
                     
-                    # 剔除翻译任务
-                    if 'translate' in prompt.lower():
-                        continue
-                    for word in ('翻译', '英译', '译英', '中译', '译中', '汉译', '译汉'):
-                        if word in prompt:
-                            continue
-                    
-                    # 删除表格类任务
-                    if '表格' in prompt or '-----' in prompt or '-----' in response:
-                        continue
-                    
-                    # 长度过滤
-                    if len(prompt) > max_len or len(response) > max_len:
-                        continue
-                    
-                    keep_cnt += 1
-                    
-                    # 收集前10行样例
-                    if file_row_cnt < 10:
-                        file_sample_rows.append({'prompt': prompt, 'response': response})
-                        file_row_cnt += 1
-                    
-                    batch_data.append({'prompt': prompt, 'response': response})
-                    
-                    # 批量写入
-                    if len(batch_data) >= group_cnt:
-                        df = pd.DataFrame(batch_data)
-                        write(save_file, df, append=exists(save_file), compression='GZIP')
-                        batch_data = []
+                    for pf_chunk in source_pf:
+                        for rows in pf_chunk.iter_row_groups():
+                            # 使用向量化操作，避免 iterrows()
+                            prompts = rows[prompt_col].to_pylist()
+                            responses = rows[response_col].to_pylist()
+                            
+                            for prompt, response in zip(prompts, responses):
+                                file_all_cnt += 1
+                                prompt = str(prompt)
+                                response = str(response)
+                                
+                                # 过滤数据
+                                if should_filter_data(prompt, response):
+                                    continue
+                                
+                                file_keep_cnt += 1
+                                
+                                # 收集前10行样例
+                                if len(file_sample_rows) < 10:
+                                    file_sample_rows.append({'prompt': prompt, 'response': response})
+                                
+                                batch_data.append({'prompt': prompt, 'response': response})
+                                
+                                # 批量写入
+                                if len(batch_data) >= group_cnt:
+                                    df = pd.DataFrame(batch_data)
+                                    write(save_file, df, append=exists(save_file), compression='GZIP')
+                                    batch_data = []
+                                    prog.update(task, advance=group_cnt)
                 
                 # 写入剩余数据
                 if batch_data:
                     df = pd.DataFrame(batch_data)
                     write(save_file, df, append=exists(save_file), compression='GZIP')
             
-            # 输出当前文件处理完成后的前10行数据
+            # 更新总计数
+            all_cnt += file_all_cnt
+            keep_cnt += file_keep_cnt
+            
+            # 输出当前文件处理完成后的统计和样例
             log.info('=' * 80, save_to_file=True)
-            log.info('文件 {} 处理完成，前{}行数据如下：'.format(file_path, len(file_sample_rows)), save_to_file=True)
+            log.info(f'文件 {file_path} 处理完成', save_to_file=True)
+            log.info(f'该文件: 处理 {file_all_cnt} 条，保留 {file_keep_cnt} 条，过滤率: {(1 - file_keep_cnt/file_all_cnt)*100:.2f}%', save_to_file=True)
+            log.info(f'前{len(file_sample_rows)}行数据样例：', save_to_file=True)
             for idx, row in enumerate(file_sample_rows, 1):
-                log.info('第{}行 - prompt: {}'.format(idx, row['prompt']), save_to_file=True)
-                log.info('第{}行 - response: {}'.format(idx, row['response']), save_to_file=True)
+                log.info(f'第{idx}行 - prompt: {row["prompt"]}', save_to_file=True)
+                log.info(f'第{idx}行 - response: {row["response"]}', save_to_file=True)
                 log.info('-' * 80, save_to_file=True)
             log.info('=' * 80, save_to_file=True)
             
         except Exception as e:
             log.error(f'处理文件 {file_path} 时出错: {str(e)}', save_to_file=True)
+            import traceback
+            log.error(traceback.format_exc(), save_to_file=True)
             continue
     
-    log.info(f'处理完成！总共处理 {all_cnt} 条数据，保留 {keep_cnt} 条数据', save_to_file=True)
+    log.info('=' * 80, save_to_file=True)
+    log.info(f'全部处理完成！', save_to_file=True)
+    log.info(f'总共处理 {all_cnt} 条数据，保留 {keep_cnt} 条数据', save_to_file=True)
+    if all_cnt > 0:
+        log.info(f'总体过滤率: {(1 - keep_cnt/all_cnt)*100:.2f}%', save_to_file=True)
     log.info(f'数据已保存到: {save_file}', save_to_file=True)
+    log.info('=' * 80, save_to_file=True)
 
 
 if __name__ == '__main__':
