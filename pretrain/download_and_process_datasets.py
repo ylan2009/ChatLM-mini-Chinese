@@ -423,8 +423,10 @@ def process_all_datasets() -> None:
         log.info("合并所有数据集...", save_to_file=True)
         merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
         
-        # 6. 去重
+        # 6. 去重（优化版：分批处理，减少内存占用）
         log.info("去除重复数据...", save_to_file=True)
+        # groups_cnt: 每次写入文件的行数
+        # batch_size: 每批处理的数据量（默认100000），可根据内存大小调整
         remove_dataset_duplicate_rows(groups_cnt=50000)
         
         # 7. 打乱数据

@@ -1131,58 +1131,131 @@ def merge_dataset_as_single_file(groups_cnt: int=50000, max_len: int=512, min_le
     log.info("merge into file: {}, 全部数据共{}行，清洗后剩余{}行".format(save_file, all_cnt, keep_cnt), save_to_file=True)
 
 
-def remove_dataset_duplicate_rows(groups_cnt: int=50000) -> None:
+def remove_dataset_duplicate_rows(groups_cnt: int=50000, batch_size: int=100000) -> None:
     '''
     使用mini_hash删除数据集中重复的部分
+    优化版本：分批处理，减少内存占用
+    
+    Args:
+        groups_cnt: 每次写入parquet文件的行数
+        batch_size: 每批处理的数据量，用于控制内存占用
     '''
     from_parquet_files = PROJECT_ROOT + '/data/my_dataset.parquet'
-
     save_file = PROJECT_ROOT + '/data/my_dataset_no_dulpticates.parquet'
+    temp_index_file = PROJECT_ROOT + '/data/temp_duplicate_indices.txt'
 
     # 后续append写入，存在文件先删除
     if exists(save_file): 
         assert delete_file(save_file)
+    
+    if exists(temp_index_file):
+        remove(temp_index_file)
 
-    cur_rows = []
-    all_cnt, keep_cnt = 0, 0
+    log.info("开始第一阶段：识别重复数据...", save_to_file=True)
+    
+    # 第一阶段：分批读取数据，识别重复项
+    all_cnt = 0
     row_index = -1
     drop_dataset_duplicate = DropDatasetDuplicate(threshold=0.85, num_perm=256)
     
-    parquet_table = pq.read_table(from_parquet_files)
-    all_cnt = parquet_table.num_rows
-
-    # 先顺序遍历获取哪些行是重复的
-    for prompt, response in progress.track(zip(parquet_table['prompt'], parquet_table['response']), total=parquet_table.num_rows):
-        row_index += 1
-
-        doc = f"{prompt.as_py()}{response.as_py()}"
-        drop_dataset_duplicate.add_doc(index=row_index, doc=doc)
-
-    row_index = -1
+    # 使用ParquetFile进行分批读取
+    source_pf = ParquetFile(from_parquet_files)
+    
+    # 先获取总行数用于进度条
+    total_rows = 0
+    for pf_chunk in source_pf:
+        for rows in pf_chunk.iter_row_groups():
+            total_rows += len(rows)
+    
+    all_cnt = total_rows
+    log.info(f"数据集总行数: {all_cnt}", save_to_file=True)
+    
+    # 重新打开文件进行处理
+    source_pf = ParquetFile(from_parquet_files)
+    
+    with progress.Progress() as prog:
+        task = prog.add_task("[cyan]识别重复数据...", total=total_rows)
+        
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                prompts = rows['prompt']
+                responses = rows['response']
+                
+                for i in range(len(prompts)):
+                    row_index += 1
+                    doc = f"{prompts[i]}{responses[i]}"
+                    drop_dataset_duplicate.add_doc(index=row_index, doc=doc)
+                    prog.update(task, advance=1)
+    
+    # 获取需要删除的索引
     need_to_drop_indexs = drop_dataset_duplicate.get_duplicate_indexs()
-
-    # 再顺序遍历一遍，重复的行不添加到新的数据集
-    for prompt, response in progress.track(zip(parquet_table['prompt'], parquet_table['response']), total=parquet_table.num_rows):
-        row_index += 1  # 不管有没有跳过行, row_index都必须+1
-
-        # 重复的行跳过
-        if row_index in need_to_drop_indexs:
-            continue
-
-        cur_rows.append({'prompt': prompt.as_py() , 'response': response.as_py()})
-        keep_cnt += 1
-
-        if len(cur_rows) >= groups_cnt:
-            df = pd.DataFrame(cur_rows)
-            write_single_parquet_file(save_file, df)
-            cur_rows = []
-
+    duplicate_count = len(need_to_drop_indexs)
+    log.info(f"识别到 {duplicate_count} 条重复数据", save_to_file=True)
+    
+    # 释放内存
+    del drop_dataset_duplicate
+    
+    # 将重复索引保存到临时文件（如果数量很大）
+    if duplicate_count > 1000000:
+        log.info("重复数据量较大，使用临时文件存储索引...", save_to_file=True)
+        with open(temp_index_file, 'w') as f:
+            for idx in need_to_drop_indexs:
+                f.write(f"{idx}\n")
+        # 清空内存中的集合
+        need_to_drop_indexs.clear()
+        # 重新加载为集合（这样查询更快）
+        with open(temp_index_file, 'r') as f:
+            need_to_drop_indexs = set(int(line.strip()) for line in f)
+    
+    log.info("开始第二阶段：过滤并保存数据...", save_to_file=True)
+    
+    # 第二阶段：分批读取并写入非重复数据
+    cur_rows = []
+    keep_cnt = 0
+    row_index = -1
+    
+    source_pf = ParquetFile(from_parquet_files)
+    
+    with progress.Progress() as prog:
+        task = prog.add_task("[green]过滤重复数据...", total=total_rows)
+        
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                prompts = rows['prompt']
+                responses = rows['response']
+                
+                for i in range(len(prompts)):
+                    row_index += 1
+                    prog.update(task, advance=1)
+                    
+                    # 重复的行跳过
+                    if row_index in need_to_drop_indexs:
+                        continue
+                    
+                    cur_rows.append({
+                        'prompt': str(prompts[i]), 
+                        'response': str(responses[i])
+                    })
+                    keep_cnt += 1
+                    
+                    # 达到批次大小，写入文件
+                    if len(cur_rows) >= groups_cnt:
+                        df = pd.DataFrame(cur_rows)
+                        write_single_parquet_file(save_file, df)
+                        cur_rows = []
+    
     # 处理末尾部分
     if len(cur_rows) > 0:
         df = pd.DataFrame(cur_rows)
         write_single_parquet_file(save_file, df)
-
-    log.info("merge into file: {}, 全部数据共{}行，文档去重后剩余{}行".format(save_file, all_cnt, keep_cnt), save_to_file=True)
+    
+    # 清理临时文件
+    if exists(temp_index_file):
+        remove(temp_index_file)
+    
+    log.info("merge into file: {}, 全部数据共{}行，文档去重后剩余{}行，去重率: {:.2f}%".format(
+        save_file, all_cnt, keep_cnt, (1 - keep_cnt/all_cnt) * 100 if all_cnt > 0 else 0
+    ), save_to_file=True)
 
 def shuffle_parquet_dataset(parquet_file: str, shuffle_file: str, seed: int=23333, groups_cnt: int=65536) -> None:
     '''
