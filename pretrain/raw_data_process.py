@@ -1083,6 +1083,7 @@ def process_wiki_simple_to_dataset(groups_cnt: int=10000, max_len: int=512, seed
 def merge_dataset_as_single_file(groups_cnt: int=50000, max_len: int=512, min_len: int=3, cut_max_len: bool=False) -> None:
     '''
     将多个数据集合并为一个数据集
+    优化版本：使用分批读取，避免一次性加载整个文件到内存
     '''
     from_parquet_files = get_path_of_suffix_files(PROJECT_ROOT + '/data/my_data', '.parquet')
 
@@ -1093,34 +1094,58 @@ def merge_dataset_as_single_file(groups_cnt: int=50000, max_len: int=512, min_le
         assert delete_file(save_file)
 
     cur_rows = []
-    append = cur_rows.append
-    
     all_cnt, keep_cnt = 0, 0
-    for file in from_parquet_files:
-        print('process file: {}'.format(file))
-
-        parquet_table = pq.read_table(file)
-     
-        for prompt, response in progress.track(zip(parquet_table['prompt'], parquet_table['response']), total=parquet_table.num_rows):
-
-            prompt, response = prompt.as_py(), response.as_py()
-            all_cnt += 1
-
-            if len(prompt) < min_len or len(response) < min_len:
-                continue
-
-            if cut_max_len and (len(prompt) > max_len or len(response) > max_len):
-                prompt = prompt[0: max_len]
-                response = response[0: max_len]
-
-            keep_cnt += 1
-            append({'prompt': prompt , 'response': response})
-
-            if len(cur_rows) >= groups_cnt:
-                df = pd.DataFrame(cur_rows)
-                write_single_parquet_file(save_file, df)
-                cur_rows = []
-                append = cur_rows.append
+    
+    log.info(f"开始合并 {len(from_parquet_files)} 个数据文件...", save_to_file=True)
+    
+    for file_idx, file in enumerate(from_parquet_files, 1):
+        log.info(f"处理文件 [{file_idx}/{len(from_parquet_files)}]: {file}", save_to_file=True)
+        
+        # 使用ParquetFile分批读取，避免一次性加载整个文件
+        source_pf = ParquetFile(file)
+        
+        # 获取文件总行数
+        file_total_rows = 0
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                file_total_rows += len(rows)
+        
+        # 重新打开文件进行处理
+        source_pf = ParquetFile(file)
+        file_keep_cnt = 0
+        
+        with progress.Progress() as prog:
+            task = prog.add_task(f"[cyan]处理 {file}...", total=file_total_rows)
+            
+            for pf_chunk in source_pf:
+                for rows in pf_chunk.iter_row_groups():
+                    prompts = rows['prompt']
+                    responses = rows['response']
+                    
+                    for i in range(len(prompts)):
+                        all_cnt += 1
+                        prog.update(task, advance=1)
+                        
+                        prompt = str(prompts[i])
+                        response = str(responses[i])
+                        
+                        if len(prompt) < min_len or len(response) < min_len:
+                            continue
+                        
+                        if cut_max_len and (len(prompt) > max_len or len(response) > max_len):
+                            prompt = prompt[0: max_len]
+                            response = response[0: max_len]
+                        
+                        keep_cnt += 1
+                        file_keep_cnt += 1
+                        cur_rows.append({'prompt': prompt, 'response': response})
+                        
+                        if len(cur_rows) >= groups_cnt:
+                            df = pd.DataFrame(cur_rows)
+                            write_single_parquet_file(save_file, df)
+                            cur_rows = []
+        
+        log.info(f"文件 {file} 处理完成，保留 {file_keep_cnt}/{file_total_rows} 行", save_to_file=True)
         
     # 处理末尾部分
     if len(cur_rows) > 0:
@@ -1128,7 +1153,9 @@ def merge_dataset_as_single_file(groups_cnt: int=50000, max_len: int=512, min_le
         write_single_parquet_file(save_file, df)
         cur_rows = []
 
-    log.info("merge into file: {}, 全部数据共{}行，清洗后剩余{}行".format(save_file, all_cnt, keep_cnt), save_to_file=True)
+    log.info("merge into file: {}, 全部数据共{}行，清洗后剩余{}行，保留率: {:.2f}%".format(
+        save_file, all_cnt, keep_cnt, (keep_cnt/all_cnt * 100) if all_cnt > 0 else 0
+    ), save_to_file=True)
 
 
 def remove_dataset_duplicate_rows(groups_cnt: int=50000, batch_size: int=100000) -> None:
@@ -1260,23 +1287,79 @@ def remove_dataset_duplicate_rows(groups_cnt: int=50000, batch_size: int=100000)
 def shuffle_parquet_dataset(parquet_file: str, shuffle_file: str, seed: int=23333, groups_cnt: int=65536) -> None:
     '''
     打乱一个parquet文件数据集
+    优化版本：使用索引打乱而非加载整个数据集，大幅减少内存占用
     '''
     if not exists(parquet_file):
         raise Exception('can not find parquet file: {}'.format(parquet_file))
     
-    print('start shuffle...')
-    pf =  pq.read_table(parquet_file)
-    df = pf.to_pandas()
-    df = df.sample(frac=1.0, replace=False, random_state=seed, axis=0)
+    log.info('开始打乱数据集...', save_to_file=True)
+    
+    # 第一步：获取总行数
+    log.info('第一阶段：统计数据集大小...', save_to_file=True)
+    source_pf = ParquetFile(parquet_file)
+    total_rows = 0
+    for pf_chunk in source_pf:
+        for rows in pf_chunk.iter_row_groups():
+            total_rows += len(rows)
+    
+    log.info(f'数据集总行数: {total_rows}', save_to_file=True)
+    
+    # 第二步：生成打乱的索引
+    log.info('第二阶段：生成随机索引...', save_to_file=True)
+    np.random.seed(seed)
+    shuffled_indices = np.random.permutation(total_rows)
+    
+    # 第三步：按照打乱的索引读取数据
+    log.info('第三阶段：按随机顺序重组数据...', save_to_file=True)
     
     if exists(shuffle_file): 
         assert delete_file(shuffle_file)
     
-    # 分块写入parquet，否则小内存读取直接OOM
-    n = len(df)
-    for i in range(0, n, groups_cnt):
-        cur_group_df = df[i: i + groups_cnt]
-        write_single_parquet_file(shuffle_file, cur_group_df)
+    # 先读取所有数据到列表（按原始顺序）
+    all_data = []
+    source_pf = ParquetFile(parquet_file)
+    
+    with progress.Progress() as prog:
+        task = prog.add_task("[cyan]读取数据...", total=total_rows)
+        
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                prompts = rows['prompt']
+                responses = rows['response']
+                
+                for i in range(len(prompts)):
+                    all_data.append({
+                        'prompt': str(prompts[i]),
+                        'response': str(responses[i])
+                    })
+                    prog.update(task, advance=1)
+    
+    # 按照打乱的索引重组数据并分批写入
+    log.info('重组并写入数据...', save_to_file=True)
+    cur_rows = []
+    
+    with progress.Progress() as prog:
+        task = prog.add_task("[green]写入打乱后的数据...", total=total_rows)
+        
+        for idx in shuffled_indices:
+            cur_rows.append(all_data[idx])
+            prog.update(task, advance=1)
+            
+            if len(cur_rows) >= groups_cnt:
+                df = pd.DataFrame(cur_rows)
+                write_single_parquet_file(shuffle_file, df)
+                cur_rows = []
+        
+        # 处理末尾部分
+        if len(cur_rows) > 0:
+            df = pd.DataFrame(cur_rows)
+            write_single_parquet_file(shuffle_file, df)
+    
+    # 释放内存
+    del all_data
+    del shuffled_indices
+    
+    log.info(f'数据打乱完成，已保存到: {shuffle_file}', save_to_file=True)
 
 def count_my_json_data() -> None:
     '''
@@ -1355,6 +1438,7 @@ def count_my_parquet_data(parquet_file: str=None) -> None:
 def split_train_valid_test_datasets(source_parquet_file: str, max_len: int=320, seed: int=23333, train_ratio: float=0.91, test_ratio: float=0.0875, valid_ratio: float=0.0025, groups_cnt: int=50000) -> None:
     '''
     将原始数据拆分为训练集、测试集和验证集
+    优化版本：使用分批读取，避免一次性加载整个数据集到内存
     '''
     assert train_ratio + test_ratio + valid_ratio == 1.0
 
@@ -1369,35 +1453,66 @@ def split_train_valid_test_datasets(source_parquet_file: str, max_len: int=320, 
     np.random.seed(seed)
 
     train, test, valid = [], [], []
-
-    parquet_table =  pq.read_table(source_parquet_file)
-
-    for prompt, response in progress.track(zip(parquet_table['prompt'], parquet_table['response']), total=parquet_table.num_rows):
+    train_cnt, test_cnt, valid_cnt = 0, 0, 0
+    
+    log.info('开始划分数据集...', save_to_file=True)
+    
+    # 获取总行数
+    source_pf = ParquetFile(source_parquet_file)
+    total_rows = 0
+    for pf_chunk in source_pf:
+        for rows in pf_chunk.iter_row_groups():
+            total_rows += len(rows)
+    
+    log.info(f'数据集总行数: {total_rows}', save_to_file=True)
+    log.info(f'划分比例 - 训练集: {train_ratio*100:.1f}%, 测试集: {test_ratio*100:.1f}%, 验证集: {valid_ratio*100:.1f}%', save_to_file=True)
+    
+    # 重新打开文件进行处理
+    source_pf = ParquetFile(source_parquet_file)
+    
+    with progress.Progress() as prog:
+        task = prog.add_task("[cyan]划分数据集...", total=total_rows)
         
-        prompt, response = prompt.as_py(), response.as_py()
-        rand = np.random.random()
-        cur_data = {'prompt': ''.join(prompt[0: max_len]) , 'response': ''.join(response[0: max_len])}
-
-        if 0 <= rand < train_ratio:
-            train.append(cur_data)
-        elif train_ratio <= rand  < train_ratio + test_ratio:
-            test.append(cur_data)
-        else:
-            valid.append(cur_data)
-        
-        if len(train) >= groups_cnt:
-            write_single_parquet_file(train_parquet_file, pd.DataFrame(train))
-            train = []
-        
-        if len(test) >= groups_cnt:
-            write_single_parquet_file(test_parquet_file, pd.DataFrame(test))
-            test = []
-        
-        if len(valid) >= groups_cnt:
-            write_single_parquet_file(valid_parquet_file, pd.DataFrame(valid))
-            valid = []
+        for pf_chunk in source_pf:
+            for rows in pf_chunk.iter_row_groups():
+                prompts = rows['prompt']
+                responses = rows['response']
                 
+                for i in range(len(prompts)):
+                    prog.update(task, advance=1)
+                    
+                    prompt = str(prompts[i])
+                    response = str(responses[i])
+                    
+                    rand = np.random.random()
+                    cur_data = {
+                        'prompt': prompt[0: max_len] if len(prompt) > max_len else prompt,
+                        'response': response[0: max_len] if len(response) > max_len else response
+                    }
 
+                    if 0 <= rand < train_ratio:
+                        train.append(cur_data)
+                        train_cnt += 1
+                    elif train_ratio <= rand < train_ratio + test_ratio:
+                        test.append(cur_data)
+                        test_cnt += 1
+                    else:
+                        valid.append(cur_data)
+                        valid_cnt += 1
+                    
+                    if len(train) >= groups_cnt:
+                        write_single_parquet_file(train_parquet_file, pd.DataFrame(train))
+                        train = []
+                    
+                    if len(test) >= groups_cnt:
+                        write_single_parquet_file(test_parquet_file, pd.DataFrame(test))
+                        test = []
+                    
+                    if len(valid) >= groups_cnt:
+                        write_single_parquet_file(valid_parquet_file, pd.DataFrame(valid))
+                        valid = []
+
+    # 处理末尾部分
     if len(train) > 0:
         write_single_parquet_file(train_parquet_file, pd.DataFrame(train))
         train = []
@@ -1409,6 +1524,11 @@ def split_train_valid_test_datasets(source_parquet_file: str, max_len: int=320, 
     if len(valid) > 0:
         write_single_parquet_file(valid_parquet_file, pd.DataFrame(valid))
         valid = []
+    
+    log.info('数据集划分完成！', save_to_file=True)
+    log.info(f'训练集: {train_cnt} 行 ({train_cnt/total_rows*100:.2f}%)', save_to_file=True)
+    log.info(f'测试集: {test_cnt} 行 ({test_cnt/total_rows*100:.2f}%)', save_to_file=True)
+    log.info(f'验证集: {valid_cnt} 行 ({valid_cnt/total_rows*100:.2f}%)', save_to_file=True)
 
 def parquet_to_text(sep='[SEP]', buffer_size: int=50000) -> None:
     '''
