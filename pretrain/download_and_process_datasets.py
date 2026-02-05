@@ -431,27 +431,27 @@ def process_all_datasets() -> None:
         
         # 7. 打乱数据（使用去重后的数据集）
         log.info("打乱数据集...", save_to_file=True)
-        shuffle_parquet_dataset(
-            parquet_file=PROJECT_ROOT + '/data/my_dataset_no_dulpticates.parquet',  # 使用去重后的文件
-            shuffle_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
-            seed=23333
-        )
+        # shuffle_parquet_dataset(
+        #     parquet_file=PROJECT_ROOT + '/data/my_dataset_no_dulpticates.parquet',  # 使用去重后的文件
+        #     shuffle_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
+        #     seed=23333
+        # )
         
         # 8. 划分训练集、验证集、测试集
         log.info("划分训练集、验证集、测试集...", save_to_file=True)
-        split_train_valid_test_datasets(
-            source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
-            max_len=320,
-            groups_cnt=100000
-        )
+        # split_train_valid_test_datasets(
+        #     source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
+        #     max_len=320,
+        #     groups_cnt=100000
+        # )
         
         # 9. 转换为文本格式（用于训练tokenizer）
         log.info("转换为文本格式...", save_to_file=True)
-        parquet_to_text()
+        # parquet_to_text()
         
         # 9. 统计数据
         log.info("统计数据集信息...", save_to_file=True)
-        count_my_parquet_data(PROJECT_ROOT + '/data/')
+        # count_my_parquet_data(PROJECT_ROOT + '/data/')
         
         # 10. 统计长度分布
         log.info("统计长度分布...", save_to_file=True)
