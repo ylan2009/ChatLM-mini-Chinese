@@ -1530,10 +1530,10 @@ def split_train_valid_test_datasets(source_parquet_file: str, max_len: int=320, 
     log.info(f'测试集: {test_cnt} 行 ({test_cnt/total_rows*100:.2f}%)', save_to_file=True)
     log.info(f'验证集: {valid_cnt} 行 ({valid_cnt/total_rows*100:.2f}%)', save_to_file=True)
 
-def parquet_to_text(sep='[SEP]', buffer_size: int=50000) -> None:
+def parquet_to_text(sep=' ', buffer_size: int=50000) -> None:
     '''
-    将parquet文件转换为txt预料，句子之间用sep隔开
-    txt文件用于训练tokenizer，使用huggingface的BPE训练会导致OOM
+    将parquet文件转换为txt语料，用于训练tokenizer
+    注意：tokenizer训练数据应该是纯文本，不应该包含特殊标记如[SEP]
     '''
     parquet_file = PROJECT_ROOT + '/data/my_dataset.parquet'
     txt_file = PROJECT_ROOT + '/data/my_corpus.txt'
@@ -1548,7 +1548,8 @@ def parquet_to_text(sep='[SEP]', buffer_size: int=50000) -> None:
         for pf_chunk in progress.track(source_pf):
             for rows in pf_chunk.iter_row_groups():
                 for prompt, response in zip(rows['prompt'], rows['response']):
-                    append(prompt + sep + response + sep + '\n')
+                    # 用空格连接 prompt 和 response，去除特殊标记
+                    append(prompt + sep + response + '\n')
 
                     if len(cur_rows) >= buffer_size:
                         f_write.writelines(cur_rows)

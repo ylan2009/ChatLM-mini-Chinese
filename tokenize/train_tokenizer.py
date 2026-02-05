@@ -478,7 +478,7 @@ def main():
         epilog="""
 示例:
   # 方式1：基于 T5-base 训练（推荐）
-  python train_tokenizer.py --method t5-base --wiki-file ../data/my_corpus.txt --output-dir ../model_save/my_tokenizer_wiki
+  python train_tokenizer.py --method t5-base --wiki-file ../data/my_corpus_processed.txt --output-dir ../model_save/my_tokenizer_wiki
   
   # 方式2：从零创建字符级别 tokenizer
   python train_tokenizer.py --method char-bpe --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_char

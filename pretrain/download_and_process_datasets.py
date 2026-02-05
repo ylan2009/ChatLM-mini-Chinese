@@ -447,7 +447,7 @@ def process_all_datasets() -> None:
         
         # 9. 转换为文本格式（用于训练tokenizer）
         log.info("转换为文本格式...", save_to_file=True)
-        # parquet_to_text()
+        parquet_to_text()
         
         # 9. 统计数据
         log.info("统计数据集信息...", save_to_file=True)
