@@ -106,12 +106,20 @@ def get_wiki_corpus_iterator(wiki_file: str, min_chunk_size: int = 2048, batch_s
         len_cnt = 0
         
         for line in progress.track(lines, description="处理语料"):
+            # 跳过空行
+            line = line.strip()
+            if not line:
+                continue
+            
             len_cnt += len(line)
             txt.append(line)
             
             # 当累积字符数达到最小块大小时，创建一个文本块
             if len_cnt >= min_chunk_size:
-                buffer.append(''.join(txt))
+                text = ' '.join(txt)  # 使用空格连接，而不是直接拼接
+                # 确保文本不为空且长度合理
+                if text and len(text) >= 10:
+                    buffer.append(text)
                 txt = []
                 len_cnt = 0
             
@@ -119,6 +127,12 @@ def get_wiki_corpus_iterator(wiki_file: str, min_chunk_size: int = 2048, batch_s
             if len(buffer) >= batch_size:
                 yield buffer
                 buffer = []
+        
+        # 处理剩余的文本
+        if txt:
+            text = ' '.join(txt)
+            if text and len(text) >= 10:
+                buffer.append(text)
         
         # 返回最后一批数据
         if len(buffer) > 0:
@@ -141,16 +155,7 @@ def get_parquet_corpus_iterator(parquet_file: str, batch_size: int = 1000) -> It
     global progress
     if progress is None:
         _, _, progress = check_transformers()
-    """
-    从 Parquet 文件中生成训练语料迭代器
     
-    Args:
-        parquet_file: Parquet 文件路径
-        batch_size: 每次迭代返回的样本数量（默认1000）
-    
-    Yields:
-        包含多个文本的列表
-    """
     try:
         import pyarrow.parquet as pq
     except ImportError:
@@ -169,7 +174,20 @@ def get_parquet_corpus_iterator(parquet_file: str, batch_size: int = 1000) -> It
             total=pf.num_rows,
             description="处理语料"
         ):
-            buffer.append(f"{prompt.as_py()}\n{response.as_py()}")
+            # 获取实际的字符串值
+            prompt_str = prompt.as_py() if prompt.as_py() else ""
+            response_str = response.as_py() if response.as_py() else ""
+            
+            # 跳过空值
+            if not prompt_str and not response_str:
+                continue
+            
+            # 组合 prompt 和 response
+            text = f"{prompt_str} {response_str}".strip()
+            
+            # 确保文本不为空且长度合理
+            if text and len(text) >= 10:
+                buffer.append(text)
             
             if len(buffer) >= batch_size:
                 yield buffer
@@ -460,7 +478,7 @@ def main():
         epilog="""
 示例:
   # 方式1：基于 T5-base 训练（推荐）
-  python train_tokenizer.py --method t5-base --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_wiki
+  python train_tokenizer.py --method t5-base --wiki-file ../data/my_corpus.txt --output-dir ../model_save/my_tokenizer_wiki
   
   # 方式2：从零创建字符级别 tokenizer
   python train_tokenizer.py --method char-bpe --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_char
