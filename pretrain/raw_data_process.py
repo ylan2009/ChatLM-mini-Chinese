@@ -1590,9 +1590,9 @@ def parquet_to_json(buffer_size: int=10000) -> None:
         
         for pf_chunk in progress.track(source_pf, description="转换中..."):
             for rows in pf_chunk.iter_row_groups():
-                # 使用向量化操作
-                prompts = rows['prompt'].to_pylist()
-                responses = rows['response'].to_pylist()
+                # 使用向量化操作（pandas DataFrame 使用 tolist()）
+                prompts = rows['prompt'].tolist()
+                responses = rows['response'].tolist()
                 
                 for prompt, response in zip(prompts, responses):
                     # 过滤空数据
@@ -1663,9 +1663,9 @@ def dataset_length_cnt() -> None:
         
         for pf_chunk in source_pf:
             for rows in pf_chunk.iter_row_groups():
-                # 使用向量化操作
-                prompts = rows['prompt'].to_pylist()
-                responses = rows['response'].to_pylist()
+                # 使用向量化操作（pandas DataFrame 使用 tolist()）
+                prompts = rows['prompt'].tolist()
+                responses = rows['response'].tolist()
                 
                 for prompt, response in zip(prompts, responses):
                     prompt = str(prompt)
