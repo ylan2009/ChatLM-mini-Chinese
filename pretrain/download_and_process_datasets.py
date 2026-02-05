@@ -421,13 +421,13 @@ def process_all_datasets() -> None:
         
         # 5. 合并所有数据集
         log.info("合并所有数据集...", save_to_file=True)
-        # merge_dataset_as_single_file(groups_cnt=50000, min_len=3, max_len=512, cut_max_len=True)
+        # merge_dataset_as_single_file(groups_cnt=100000, min_len=3, max_len=512, cut_max_len=True)
         
         # 6. 去重（优化版：分批处理，减少内存占用）
         log.info("去除重复数据...", save_to_file=True)
         # groups_cnt: 每次写入文件的行数
         # batch_size: 每批处理的数据量（默认100000），可根据内存大小调整
-        remove_dataset_duplicate_rows(groups_cnt=50000)
+        # remove_dataset_duplicate_rows(groups_cnt=100000)
         
         # 7. 打乱数据（使用去重后的数据集）
         log.info("打乱数据集...", save_to_file=True)
@@ -442,7 +442,7 @@ def process_all_datasets() -> None:
         split_train_valid_test_datasets(
             source_parquet_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
             max_len=320,
-            groups_cnt=50000
+            groups_cnt=100000
         )
         
         # 9. 转换为文本格式（用于训练tokenizer）
@@ -459,7 +459,7 @@ def process_all_datasets() -> None:
         
         # 11. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
-        process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=50000)
+        process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=100000)
         
         # 12. 转换为JSON格式
         log.info("转换为JSON格式...", save_to_file=True)
