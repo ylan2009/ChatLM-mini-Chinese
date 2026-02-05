@@ -429,10 +429,10 @@ def process_all_datasets() -> None:
         # batch_size: 每批处理的数据量（默认100000），可根据内存大小调整
         remove_dataset_duplicate_rows(groups_cnt=50000)
         
-        # 7. 打乱数据
+        # 7. 打乱数据（使用去重后的数据集）
         log.info("打乱数据集...", save_to_file=True)
         shuffle_parquet_dataset(
-            parquet_file=PROJECT_ROOT + '/data/my_dataset.parquet',
+            parquet_file=PROJECT_ROOT + '/data/my_dataset_no_dulpticates.parquet',  # 使用去重后的文件
             shuffle_file=PROJECT_ROOT + '/data/my_dataset.shuffle.parquet',
             seed=23333
         )
