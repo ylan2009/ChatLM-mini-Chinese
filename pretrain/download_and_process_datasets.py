@@ -455,7 +455,7 @@ def process_all_datasets() -> None:
         
         # 10. 统计长度分布
         log.info("统计长度分布...", save_to_file=True)
-        dataset_length_cnt()
+        # dataset_length_cnt()
         
         # 11. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
