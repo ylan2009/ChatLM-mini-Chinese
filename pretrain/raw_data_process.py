@@ -1876,16 +1876,31 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
                     write(save_file, df, append=exists(save_file), compression='GZIP')
                 
             else:
-                # 识别普通格式的列名
+                # 识别普通格式的列名（优先级顺序很重要！）
                 prompt_col = None
                 response_col = None
                 
-                for col in columns:
-                    col_lower = col.lower()
-                    if col_lower in ['instruction', 'prompt', 'input', 'question']:
-                        prompt_col = col
-                    elif col_lower in ['output', 'response', 'answer', 'target']:
-                        response_col = col
+                # 定义列名优先级（从高到低）
+                prompt_priority = ['instruction', 'prompt', 'question', 'input']  # instruction 优先级最高
+                response_priority = ['output', 'response', 'answer', 'target']
+                
+                # 按优先级查找 prompt 列
+                for candidate in prompt_priority:
+                    for col in columns:
+                        if col.lower() == candidate:
+                            prompt_col = col
+                            break
+                    if prompt_col:
+                        break
+                
+                # 按优先级查找 response 列
+                for candidate in response_priority:
+                    for col in columns:
+                        if col.lower() == candidate:
+                            response_col = col
+                            break
+                    if response_col:
+                        break
                 
                 if not prompt_col or not response_col:
                     log.error(f'无法识别文件列名: {file_path}, 列名为: {columns}', save_to_file=True)
