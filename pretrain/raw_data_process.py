@@ -1827,8 +1827,8 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
                     
                     for pf_chunk in source_pf:
                         for rows in pf_chunk.iter_row_groups():
-                            # 获取 conversations 列
-                            conversations_list = rows['conversations'].to_pylist()
+                            # 获取 conversations 列（pandas DataFrame 使用 tolist()）
+                            conversations_list = rows['conversations'].tolist()
                             
                             for conversations in conversations_list:
                                 if not isinstance(conversations, list):
@@ -1889,9 +1889,9 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
                     
                     for pf_chunk in source_pf:
                         for rows in pf_chunk.iter_row_groups():
-                            # 使用向量化操作，避免 iterrows()
-                            prompts = rows[prompt_col].to_pylist()
-                            responses = rows[response_col].to_pylist()
+                            # 使用向量化操作，避免 iterrows()（pandas DataFrame 使用 tolist()）
+                            prompts = rows[prompt_col].tolist()
+                            responses = rows[response_col].tolist()
                             
                             for prompt, response in zip(prompts, responses):
                                 file_all_cnt += 1
