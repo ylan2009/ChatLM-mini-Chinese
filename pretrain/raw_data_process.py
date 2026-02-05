@@ -1771,6 +1771,16 @@ def process_belle_knowledge_enhanced_dataset_for_finetune(max_len: int=320, grou
         判断数据是否应该被过滤掉
         返回 True 表示应该过滤（不保留），False 表示保留
         """
+        # 过滤空值（最重要的检查，放在最前面）
+        if not prompt or not response:
+            return True
+        
+        prompt_stripped = prompt.strip()
+        response_stripped = response.strip()
+        
+        if len(prompt_stripped) == 0 or len(response_stripped) == 0:
+            return True
+        
         # 剔除翻译任务
         if 'translate' in prompt.lower():
             return True
