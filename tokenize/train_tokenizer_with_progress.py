@@ -14,6 +14,16 @@
         --input ../data/my_corpus_clean.txt \
         --output ../model_save/my_tokenizer_sp \
         --vocab-size 40960
+
+    使用采样50w的数据集
+
+    # 采样数据
+    shuf ../data/my_corpus_clean.txt | head -n 500000 > ../data/my_corpus_sampled.txt
+
+    python train_tokenizer_with_progress.py \
+        --input ../data/my_corpus_sampled.txt \
+        --output ../model_save/my_tokenizer_sp \
+        --vocab-size 40960
 """
 
 import os
