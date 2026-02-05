@@ -459,11 +459,11 @@ def process_all_datasets() -> None:
         
         # 11. 处理微调数据集
         log.info("处理微调数据集...", save_to_file=True)
-        process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=100000)
+        # process_belle_knowledge_enhanced_dataset_for_finetune(max_len=320, group_cnt=100000)
         
         # 12. 转换为JSON格式
         log.info("转换为JSON格式...", save_to_file=True)
-        parquet_to_json()
+        # parquet_to_json()
         
         log.info("=" * 60, save_to_file=True)
         log.info("所有数据集处理完成！", save_to_file=True)
