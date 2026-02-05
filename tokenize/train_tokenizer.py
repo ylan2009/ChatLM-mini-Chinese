@@ -14,6 +14,11 @@
    - 字节级别 BPE tokenizer
    - 完全自定义的 tokenizer
 
+3. 使用 SentencePiece 训练 tokenizer（稳定快速）
+   - 支持 unigram、BPE、char、word 模型
+   - 训练速度快，内存占用低
+   - 稳定性高，不易出错
+
 使用方法：
     # 方式1：基于 T5-base 训练（推荐）
     python train_tokenizer.py --method t5-base --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_wiki
@@ -23,6 +28,9 @@
     
     # 方式3：从零创建字节级别 tokenizer
     python train_tokenizer.py --method byte-bpe --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_byte
+    
+    # 方式4：使用 SentencePiece 训练（稳定快速）
+    python train_tokenizer.py --method sentencepiece --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_sp
 """
 
 import argparse
@@ -57,6 +65,14 @@ def check_tokenizers():
     except ImportError:
         return None, None, None, None, None, None, None, None, None, None
 
+def check_sentencepiece():
+    """检查并导入 sentencepiece"""
+    try:
+        import sentencepiece as spm
+        return spm
+    except ImportError:
+        return None
+
 # 全局变量，延迟初始化
 AutoTokenizer = None
 PreTrainedTokenizerFast = None
@@ -71,6 +87,7 @@ Digits = None
 ByteLevel = None
 Metaspace = None
 NFKC = None
+spm = None
 
 from config import PROJECT_ROOT
 
@@ -431,6 +448,176 @@ def train_byte_level_tokenizer(
     return tokenizer
 
 
+def train_sentencepiece_tokenizer(
+    wiki_file: str = None,
+    parquet_file: str = None,
+    vocab_size: int = 40960,
+    output_dir: str = None,
+    model_type: str = 'unigram',
+    character_coverage: float = 0.9995
+):
+    """
+    使用 SentencePiece 训练 tokenizer
+    
+    Args:
+        wiki_file: 维基百科文本文件路径
+        parquet_file: Parquet 文件路径
+        vocab_size: 词汇表大小（默认40960）
+        output_dir: 输出目录
+        model_type: 模型类型，可选 'unigram', 'bpe', 'char', 'word'（默认 'unigram'）
+        character_coverage: 字符覆盖率（默认 0.9995，适合中文）
+    
+    Returns:
+        训练好的 tokenizer
+    """
+    global spm, progress
+    
+    # 检查并导入必要的库
+    if spm is None:
+        spm = check_sentencepiece()
+        if spm is None:
+            raise ImportError("需要 sentencepiece 库: pip install sentencepiece")
+    
+    if progress is None:
+        _, _, progress = check_transformers()
+    
+    print("\n" + "="*60)
+    print(f"方法: SentencePiece tokenizer (模型类型: {model_type})")
+    print("="*60)
+    
+    # 准备输入文件
+    if wiki_file:
+        input_file = wiki_file
+        print(f"\n使用维基百科文件: {input_file}")
+    elif parquet_file:
+        # 需要先将 Parquet 转换为文本文件
+        print(f"\n从 Parquet 文件提取文本: {parquet_file}")
+        try:
+            import pyarrow.parquet as pq
+        except ImportError:
+            raise ImportError("需要 pyarrow 库: pip install pyarrow")
+        
+        # 创建临时文本文件
+        import tempfile
+        temp_file = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.txt')
+        input_file = temp_file.name
+        
+        print("正在提取文本...")
+        pf = pq.read_table(parquet_file)
+        with open(input_file, 'w', encoding='utf-8') as f:
+            for prompt, response in progress.track(
+                zip(pf['prompt'], pf['response']),
+                total=pf.num_rows,
+                description="提取文本"
+            ):
+                prompt_str = prompt.as_py() if prompt.as_py() else ""
+                response_str = response.as_py() if response.as_py() else ""
+                if prompt_str or response_str:
+                    text = f"{prompt_str} {response_str}".strip()
+                    if text:
+                        f.write(text + '\n')
+        
+        print(f"✓ 文本已提取到临时文件: {input_file}")
+    else:
+        raise ValueError("必须提供 wiki_file 或 parquet_file")
+    
+    # 确保输出目录存在
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        model_prefix = os.path.join(output_dir, 'sentencepiece')
+    else:
+        model_prefix = 'sentencepiece'
+    
+    # 训练 SentencePiece 模型
+    print(f"\n步骤 1: 开始训练 SentencePiece 模型...")
+    print(f"  - 词汇表大小: {vocab_size}")
+    print(f"  - 模型类型: {model_type}")
+    print(f"  - 字符覆盖率: {character_coverage}")
+    print("  - 注意: 这可能需要几分钟到几十分钟")
+    
+    # SentencePiece 训练参数
+    train_args = [
+        f'--input={input_file}',
+        f'--model_prefix={model_prefix}',
+        f'--vocab_size={vocab_size}',
+        f'--model_type={model_type}',
+        f'--character_coverage={character_coverage}',
+        '--pad_id=0',
+        '--unk_id=1',
+        '--bos_id=2',
+        '--eos_id=3',
+        '--pad_piece=[PAD]',
+        '--unk_piece=[UNK]',
+        '--bos_piece=[BOS]',
+        '--eos_piece=[EOS]',
+        '--user_defined_symbols=[CLS],[SEP],[MASK]',
+        '--normalization_rule_name=nfkc',
+        '--remove_extra_whitespaces=true',
+        '--max_sentence_length=16384',
+        '--num_threads=16',
+        '--train_extremely_large_corpus=false',
+    ]
+    
+    spm.SentencePieceTrainer.train(' '.join(train_args))
+    
+    print("✓ SentencePiece 模型训练完成")
+    
+    # 加载训练好的模型
+    print("\n步骤 2: 加载训练好的模型...")
+    sp = spm.SentencePieceProcessor()
+    sp.load(f'{model_prefix}.model')
+    print(f"✓ 模型已加载，词汇表大小: {sp.get_piece_size()}")
+    
+    # 转换为 Hugging Face tokenizer
+    print("\n步骤 3: 转换为 Hugging Face tokenizer...")
+    try:
+        from transformers import T5Tokenizer
+        
+        # 创建 tokenizer 配置
+        tokenizer = T5Tokenizer(
+            vocab_file=f'{model_prefix}.model',
+            eos_token='[EOS]',
+            unk_token='[UNK]',
+            pad_token='[PAD]',
+            bos_token='[BOS]',
+            extra_ids=0,
+        )
+        
+        # 添加特殊 token
+        special_tokens = {
+            'additional_special_tokens': ['[CLS]', '[SEP]', '[MASK]']
+        }
+        tokenizer.add_special_tokens(special_tokens)
+        
+        print("✓ 已转换为 Hugging Face T5Tokenizer")
+        
+        # 保存 tokenizer
+        if output_dir:
+            print(f"\n步骤 4: 保存 tokenizer 到 {output_dir}...")
+            tokenizer.save_pretrained(output_dir)
+            print(f"✓ Tokenizer 已保存到 {output_dir}")
+            print(f"  - tokenizer_config.json")
+            print(f"  - sentencepiece.model")
+            print(f"  - special_tokens_map.json")
+        
+        # 清理临时文件
+        if parquet_file and os.path.exists(input_file):
+            os.unlink(input_file)
+            print(f"\n✓ 已清理临时文件")
+        
+        return tokenizer
+        
+    except Exception as e:
+        print(f"\n⚠ 转换为 Hugging Face tokenizer 失败: {e}")
+        print(f"但 SentencePiece 模型已保存到: {model_prefix}.model")
+        
+        # 清理临时文件
+        if parquet_file and os.path.exists(input_file):
+            os.unlink(input_file)
+        
+        return sp
+
+
 def test_tokenizer(tokenizer, test_text: str = None):
     """测试 tokenizer 的功能"""
     if test_text is None:
@@ -486,17 +673,23 @@ def main():
   # 方式3：从零创建字节级别 tokenizer
   python train_tokenizer.py --method byte-bpe --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_byte
   
+  # 方式4：使用 SentencePiece 训练（稳定快速）
+  python train_tokenizer.py --method sentencepiece --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_sp
+  
   # 使用 Parquet 文件作为语料
   python train_tokenizer.py --method t5-base --parquet-file ../data/my_dataset.shuffle.parquet --output-dir ../model_save/my_tokenizer_wiki
+  
+  # SentencePiece 使用 BPE 模型
+  python train_tokenizer.py --method sentencepiece --wiki-file ../data/wiki.simple.txt --output-dir ../model_save/my_tokenizer_sp_bpe --sp-model-type bpe
         """
     )
     
     parser.add_argument(
         '--method',
         type=str,
-        choices=['t5-base', 'char-bpe', 'byte-bpe'],
+        choices=['t5-base', 'char-bpe', 'byte-bpe', 'sentencepiece'],
         default='t5-base',
-        help='训练方法: t5-base (推荐), char-bpe, byte-bpe'
+        help='训练方法: t5-base (推荐), char-bpe, byte-bpe, sentencepiece'
     )
     
     parser.add_argument(
@@ -543,6 +736,21 @@ def main():
         '--test',
         action='store_true',
         help='训练完成后测试 tokenizer'
+    )
+    
+    parser.add_argument(
+        '--sp-model-type',
+        type=str,
+        choices=['unigram', 'bpe', 'char', 'word'],
+        default='unigram',
+        help='SentencePiece 模型类型（仅用于 sentencepiece 方法，默认: unigram）'
+    )
+    
+    parser.add_argument(
+        '--sp-character-coverage',
+        type=float,
+        default=0.9995,
+        help='SentencePiece 字符覆盖率（仅用于 sentencepiece 方法，默认: 0.9995）'
     )
     
     args = parser.parse_args()
@@ -594,6 +802,15 @@ def main():
                 corpus_iterator,
                 vocab_size=args.vocab_size,
                 output_dir=args.output_dir
+            )
+        elif args.method == 'sentencepiece':
+            tokenizer = train_sentencepiece_tokenizer(
+                wiki_file=args.wiki_file,
+                parquet_file=args.parquet_file,
+                vocab_size=args.vocab_size,
+                output_dir=args.output_dir,
+                model_type=args.sp_model_type,
+                character_coverage=args.sp_character_coverage
             )
         
         # 测试 tokenizer
