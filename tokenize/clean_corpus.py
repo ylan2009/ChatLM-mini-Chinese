@@ -20,9 +20,16 @@ from typing import List, Iterator
 from tqdm import tqdm
 
 
+# 预编译正则表达式以提升性能
+_WHITESPACE_PATTERN = re.compile(r'\s+')
+_CONTROL_CHAR_PATTERN = re.compile(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]')
+_VALID_TEXT_PATTERN = re.compile(r'[\u4e00-\u9fa5a-zA-Z0-9]')
+_REPEATED_CHAR_PATTERN = re.compile(r'(.)\1{20,}')
+
+
 def clean_text(text: str) -> str:
     """
-    清洗单行文本
+    清洗单行文本（优化版本）
     
     Args:
         text: 原始文本
@@ -34,18 +41,17 @@ def clean_text(text: str) -> str:
     text = text.strip()
     
     # 去除多余的空格（保留单个空格）
-    text = re.sub(r'\s+', ' ', text)
+    text = _WHITESPACE_PATTERN.sub(' ', text)
     
-    # 去除特殊控制字符（保留中文、英文、数字、标点）
-    # 保留常见的标点符号
-    text = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', text)
+    # 去除特殊控制字符
+    text = _CONTROL_CHAR_PATTERN.sub('', text)
     
     return text
 
 
 def is_valid_text(text: str, min_length: int = 10, max_length: int = 50000) -> bool:
     """
-    检查文本是否有效
+    检查文本是否有效（优化版本）
     
     Args:
         text: 文本
@@ -59,16 +65,16 @@ def is_valid_text(text: str, min_length: int = 10, max_length: int = 50000) -> b
         return False
     
     # 检查长度
-    if len(text) < min_length or len(text) > max_length:
+    text_len = len(text)
+    if text_len < min_length or text_len > max_length:
         return False
     
     # 检查是否全是空格或特殊字符
-    if not re.search(r'[\u4e00-\u9fa5a-zA-Z0-9]', text):
+    if not _VALID_TEXT_PATTERN.search(text):
         return False
     
     # 检查是否包含过多的重复字符（可能是垃圾数据）
-    # 例如：aaaaaaaaaa...
-    if re.search(r'(.)\1{20,}', text):
+    if _REPEATED_CHAR_PATTERN.search(text):
         return False
     
     return True
@@ -138,10 +144,11 @@ def clean_corpus(
     target_length: int = 2048,
     min_length: int = 10,
     max_length: int = 50000,
-    encoding: str = 'utf-8'
+    encoding: str = 'utf-8',
+    buffer_size: int = 10000
 ):
     """
-    清洗语料文件
+    清洗语料文件（流式处理，高性能版本）
     
     Args:
         input_file: 输入文件路径
@@ -150,6 +157,7 @@ def clean_corpus(
         min_length: 单行最小长度
         max_length: 单行最大长度
         encoding: 文件编码
+        buffer_size: 批量写入缓冲区大小
     """
     if not os.path.exists(input_file):
         raise FileNotFoundError(f"输入文件不存在: {input_file}")
@@ -161,51 +169,104 @@ def clean_corpus(
     file_size_mb = file_size / (1024 * 1024)
     print(f"📊 文件大小: {file_size_mb:.2f} MB")
     
-    # 读取所有行
-    print("🔄 读取文件内容...")
-    with open(input_file, 'r', encoding=encoding, errors='ignore') as f:
-        lines = f.readlines()
-    
-    total_lines = len(lines)
-    print(f"📝 总行数: {total_lines:,}")
-    
-    # 清洗和合并
-    print("🧹 清洗和合并文本...")
-    cleaned_blocks = []
-    
-    with tqdm(total=total_lines, desc="处理进度") as pbar:
-        for block in merge_short_lines(
-            lines, 
-            target_length=target_length,
-            min_length=min_length,
-            max_length=max_length
-        ):
-            cleaned_blocks.append(block)
-            pbar.update(1)
-    
-    print(f"✅ 生成文本块数: {len(cleaned_blocks):,}")
-    
-    # 统计信息
-    total_chars = sum(len(block) for block in cleaned_blocks)
-    avg_length = total_chars / len(cleaned_blocks) if cleaned_blocks else 0
-    
-    print(f"📊 统计信息:")
-    print(f"  - 总字符数: {total_chars:,}")
-    print(f"  - 平均块长度: {avg_length:.0f}")
-    print(f"  - 最短块长度: {min(len(b) for b in cleaned_blocks) if cleaned_blocks else 0}")
-    print(f"  - 最长块长度: {max(len(b) for b in cleaned_blocks) if cleaned_blocks else 0}")
-    
-    # 写入输出文件
-    print(f"💾 写入输出文件: {output_file}")
-    
     # 确保输出目录存在
     output_dir = os.path.dirname(output_file)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    with open(output_file, 'w', encoding=encoding) as f:
-        for block in tqdm(cleaned_blocks, desc="写入进度"):
-            f.write(block + '\n')
+    # 流式处理：边读边写
+    print("🧹 清洗和合并文本（流式处理）...")
+    
+    block_count = 0
+    total_chars = 0
+    write_buffer = []
+    
+    # 使用流式迭代器
+    def line_iterator():
+        with open(input_file, 'r', encoding=encoding, errors='ignore') as f:
+            for line in f:
+                yield line
+    
+    # 打开输出文件
+    with open(output_file, 'w', encoding=encoding, buffering=8192*1024) as out_f:
+        # 使用 tqdm 显示进度（基于文件大小）
+        with tqdm(total=file_size, unit='B', unit_scale=True, desc="处理进度") as pbar:
+            buffer = []
+            current_length = 0
+            bytes_read = 0
+            
+            for line in line_iterator():
+                bytes_read += len(line.encode(encoding))
+                pbar.update(len(line.encode(encoding)))
+                
+                # 清洗文本
+                line = clean_text(line)
+                
+                # 跳过无效文本
+                if not is_valid_text(line, min_length=min_length, max_length=max_length):
+                    continue
+                
+                # 如果单行就超过目标长度，直接输出
+                if len(line) >= target_length:
+                    # 先输出缓冲区
+                    if buffer:
+                        block = ' '.join(buffer)
+                        write_buffer.append(block)
+                        block_count += 1
+                        total_chars += len(block)
+                        buffer = []
+                        current_length = 0
+                    
+                    # 输出长行
+                    write_buffer.append(line)
+                    block_count += 1
+                    total_chars += len(line)
+                    
+                    # 批量写入
+                    if len(write_buffer) >= buffer_size:
+                        out_f.write('\n'.join(write_buffer) + '\n')
+                        write_buffer = []
+                    
+                    continue
+                
+                # 累积到缓冲区
+                buffer.append(line)
+                current_length += len(line)
+                
+                # 如果达到目标长度，输出缓冲区
+                if current_length >= target_length:
+                    block = ' '.join(buffer)
+                    write_buffer.append(block)
+                    block_count += 1
+                    total_chars += len(block)
+                    buffer = []
+                    current_length = 0
+                    
+                    # 批量写入
+                    if len(write_buffer) >= buffer_size:
+                        out_f.write('\n'.join(write_buffer) + '\n')
+                        write_buffer = []
+            
+            # 输出剩余的缓冲区
+            if buffer:
+                block = ' '.join(buffer)
+                if is_valid_text(block, min_length=min_length):
+                    write_buffer.append(block)
+                    block_count += 1
+                    total_chars += len(block)
+            
+            # 写入剩余的数据
+            if write_buffer:
+                out_f.write('\n'.join(write_buffer) + '\n')
+    
+    print(f"✅ 生成文本块数: {block_count:,}")
+    
+    # 统计信息
+    avg_length = total_chars / block_count if block_count > 0 else 0
+    
+    print(f"📊 统计信息:")
+    print(f"  - 总字符数: {total_chars:,}")
+    print(f"  - 平均块长度: {avg_length:.0f}")
     
     output_size = os.path.getsize(output_file)
     output_size_mb = output_size / (1024 * 1024)
@@ -308,6 +369,13 @@ def main():
     )
     
     parser.add_argument(
+        '--buffer-size',
+        type=int,
+        default=10000,
+        help='批量写入缓冲区大小（默认：10000，增大可提升速度）'
+    )
+    
+    parser.add_argument(
         '--preview',
         action='store_true',
         help='清洗完成后预览输出文件'
@@ -329,7 +397,8 @@ def main():
         target_length=args.target_length,
         min_length=args.min_length,
         max_length=args.max_length,
-        encoding=args.encoding
+        encoding=args.encoding,
+        buffer_size=args.buffer_size
     )
     
     # 预览输出文件
