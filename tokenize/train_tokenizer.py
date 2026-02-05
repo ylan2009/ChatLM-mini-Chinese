@@ -528,12 +528,34 @@ def train_sentencepiece_tokenizer(
     else:
         model_prefix = 'sentencepiece'
     
+    # 训练前：统计数据信息
+    print(f"\n步骤 1: 分析训练数据...")
+    import time
+    file_size = os.path.getsize(input_file) / (1024 * 1024)  # MB
+    
+    # 快速统计行数
+    print("  - 正在统计数据量...")
+    line_count = 0
+    with open(input_file, 'r', encoding='utf-8') as f:
+        for _ in f:
+            line_count += 1
+    
+    print(f"  ✓ 数据文件大小: {file_size:.2f} MB")
+    print(f"  ✓ 数据行数: {line_count:,} 行")
+    
+    # 预估训练时间
+    estimated_minutes = max(5, int(file_size / 200 * 15))  # 粗略估计：每200MB约15分钟
+    print(f"  ✓ 预估训练时间: {estimated_minutes}-{estimated_minutes*2} 分钟")
+    
     # 训练 SentencePiece 模型
-    print(f"\n步骤 1: 开始训练 SentencePiece 模型...")
+    print(f"\n步骤 2: 开始训练 SentencePiece 模型...")
     print(f"  - 词汇表大小: {vocab_size}")
     print(f"  - 模型类型: {model_type}")
     print(f"  - 字符覆盖率: {character_coverage}")
-    print("  - 注意: 这可能需要几分钟到几十分钟")
+    print(f"  - 训练模式: 大语料库模式")
+    print(f"\n  🚀 训练进行中，请耐心等待...")
+    print(f"  💡 提示: SentencePiece 会输出详细日志，请关注日志信息")
+    print("  " + "="*50)
     
     # SentencePiece 训练参数
     train_args = [
@@ -555,21 +577,32 @@ def train_sentencepiece_tokenizer(
         '--remove_extra_whitespaces=true',
         '--max_sentence_length=16384',
         '--num_threads=16',
-        '--train_extremely_large_corpus=false',
+        '--train_extremely_large_corpus=true',  # 启用大语料库训练模式
     ]
     
+    # 记录开始时间
+    start_time = time.time()
+    
+    # 开始训练
     spm.SentencePieceTrainer.train(' '.join(train_args))
     
-    print("✓ SentencePiece 模型训练完成")
+    # 计算训练耗时
+    elapsed_time = time.time() - start_time
+    elapsed_minutes = int(elapsed_time / 60)
+    elapsed_seconds = int(elapsed_time % 60)
+    
+    print("  " + "="*50)
+    print(f"  ✓ SentencePiece 模型训练完成！")
+    print(f"  ⏱  训练耗时: {elapsed_minutes} 分 {elapsed_seconds} 秒")
     
     # 加载训练好的模型
-    print("\n步骤 2: 加载训练好的模型...")
+    print(f"\n步骤 3: 加载训练好的模型...")
     sp = spm.SentencePieceProcessor()
     sp.load(f'{model_prefix}.model')
-    print(f"✓ 模型已加载，词汇表大小: {sp.get_piece_size()}")
+    print(f"  ✓ 模型已加载，词汇表大小: {sp.get_piece_size()}")
     
     # 转换为 Hugging Face tokenizer
-    print("\n步骤 3: 转换为 Hugging Face tokenizer...")
+    print(f"\n步骤 4: 转换为 Hugging Face tokenizer...")
     try:
         from transformers import T5Tokenizer
         
@@ -589,21 +622,34 @@ def train_sentencepiece_tokenizer(
         }
         tokenizer.add_special_tokens(special_tokens)
         
-        print("✓ 已转换为 Hugging Face T5Tokenizer")
+        print("  ✓ 已转换为 Hugging Face T5Tokenizer")
         
         # 保存 tokenizer
         if output_dir:
-            print(f"\n步骤 4: 保存 tokenizer 到 {output_dir}...")
+            print(f"\n步骤 5: 保存 tokenizer 到 {output_dir}...")
             tokenizer.save_pretrained(output_dir)
-            print(f"✓ Tokenizer 已保存到 {output_dir}")
-            print(f"  - tokenizer_config.json")
-            print(f"  - sentencepiece.model")
-            print(f"  - special_tokens_map.json")
+            print(f"  ✓ Tokenizer 已保存到 {output_dir}")
+            print(f"    - tokenizer_config.json")
+            print(f"    - sentencepiece.model")
+            print(f"    - special_tokens_map.json")
         
         # 清理临时文件
         if parquet_file and os.path.exists(input_file):
             os.unlink(input_file)
-            print(f"\n✓ 已清理临时文件")
+            print(f"\n  ✓ 已清理临时文件")
+        
+        # 显示总结信息
+        print("\n" + "="*60)
+        print("🎉 训练完成！")
+        print("="*60)
+        print(f"📊 训练统计:")
+        print(f"  - 数据量: {line_count:,} 行 ({file_size:.2f} MB)")
+        print(f"  - 词汇表大小: {tokenizer.vocab_size}")
+        print(f"  - 训练耗时: {elapsed_minutes} 分 {elapsed_seconds} 秒")
+        print(f"  - 输出目录: {output_dir}")
+        print("\n💡 下一步:")
+        print(f"  python quick_test_tokenizer.py {output_dir}")
+        print("="*60 + "\n")
         
         return tokenizer
         
