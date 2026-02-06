@@ -94,7 +94,7 @@ class SFTconfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfig:
-    epochs: int = 8
+    epochs: int = 2
     batch_size_per_gpu: int = 16
     
     learn_rate: float = 0.0001                      # 最大 div_factor * learn_rate
@@ -123,7 +123,7 @@ class TrainConfig:
     output_dir: str = PROJECT_ROOT + '/model_save/pretrain'
 
     logging_steps: int = 50
-    save_steps: int = 10000
+    save_steps: int = 5000
     
     # dataset_cache_dir: str = PROJECT_ROOT + '/data/.cache'
     # trainer_log_file: str = PROJECT_ROOT + '/logs/trainer.log'
