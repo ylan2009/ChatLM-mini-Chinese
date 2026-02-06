@@ -2,7 +2,7 @@ from typing import Union
 
 from torch.utils.data import Dataset
 from torch import LongTensor, cuda
-from transformers import PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, T5Tokenizer, AutoTokenizer
 from fastparquet import ParquetFile
 from torch.utils.data import DataLoader
 from datasets import load_dataset
@@ -52,8 +52,17 @@ class MyDataset(Dataset):
         else:
             self.data = parquet_table
 
-        # 初始化tokenizer
-        self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
+        # 初始化tokenizer，自动选择合适的tokenizer类型
+        # 优先尝试 T5Tokenizer（适合 SentencePiece tokenizer）
+        try:
+            self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_dir)
+        except Exception as e:
+            # 如果T5Tokenizer失败，尝试使用AutoTokenizer
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+            except:
+                # 最后尝试PreTrainedTokenizerFast
+                self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
 
         # 在这里初始化generator
         self.sample_generator = self.item_generator()
@@ -144,9 +153,16 @@ class ParquetDataset:
         self.len_dict = self.__get_all_parquet_file_size(parquet_file=parquet_file)
 
         self.max_len = max_len
-        self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-
-        self.tokenizer = self.tokenizer
+        # 初始化tokenizer，自动选择合适的tokenizer类型
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+        except Exception as e:
+            # 如果AutoTokenizer失败，尝试使用T5Tokenizer
+            try:
+                self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_dir)
+            except:
+                # 最后尝试PreTrainedTokenizerFast
+                self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
         
         streaming = False if keep_in_memory else True 
         # streaming=True,否则大数据集OOM
