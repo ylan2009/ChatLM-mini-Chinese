@@ -107,12 +107,12 @@ class TrainConfig:
 
     warmup_steps: int = 1024                        # 模型参数预热步数，预热样本数=warmup_steps * batch_size * gradient_accumulation_steps
 
-    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_wiki/'  # tokenizer一般和model权重放在同一个文件夹
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'  # tokenizer一般和model权重放在同一个文件夹
     model_file: str = PROJECT_ROOT + '/model_save/chat_small_t5.{}.bin'
     model_config_file: str = PROJECT_ROOT + '/model_save/model_config.json'
-    train_file: str = PROJECT_ROOT + '/data/my_train_dataset_3k.parquet'
-    validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset_1k.parquet'
-    test_file: str = PROJECT_ROOT + '/data/my_test_dataset_2k.parquet'
+    train_file: str = PROJECT_ROOT + '/data/my_train_dataset.parquet'
+    validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset.parquet'
+    test_file: str = PROJECT_ROOT + '/data/my_test_dataset.parquet'
 
     # 从哪个模型开始微调，仅当traing 函数 is_finetune = True时生效
     # 微调记得冻结某些层或者调低学习率

@@ -35,9 +35,9 @@ from model.trainer import ChatTrainer
 
 
 if __name__ == '__main__':
-    # 默认使用 TrainConfigSFT 进行 SFT 微调
-    # 如果需要使用 TrainConfig 进行预训练，可以修改这里
-    train_config = TrainConfigSFT()
+    # 默认使用 TrainConfig 进行预训练
+    # 如果需要使用 TrainConfigSFT 进行 SFT 微调，可以修改这里
+    train_config = TrainConfig()
     model_config = T5ModelConfig()
 
     chat_trainer = ChatTrainer(train_config=train_config, model_config=model_config)
