@@ -266,10 +266,11 @@ class ChatTrainerLowMem:
             project_dir=train_config.train_state_dir,
         )
 
+        # 【重要】所有进程都需要获取内存信息，不能只在主进程中定义
+        unuse_mem = virtual_memory().available / (1024 ** 3)  # 单位：GB
+        unuse_disk = get_free_space_of_disk('./')
+
         if accelerator.is_main_process:
-            unuse_mem = virtual_memory().available / (1024 ** 3)  # 单位：GB
-            unuse_disk = get_free_space_of_disk('./')
-            
             log.info('=' * 80, save_to_file=True)
             log.info('低内存模式训练 - 针对16G内存优化', save_to_file=True)
             log.info('=' * 80, save_to_file=True)
