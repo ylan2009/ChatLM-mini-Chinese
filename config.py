@@ -255,17 +255,17 @@ class TrainConfigSFTFast:
     - 验证集：500样本
     
     优化策略：
-    - 增大batch_size：从1提升到8（充分利用GPU显存）
+    - 增大batch_size：从1提升到16（充分利用GPU显存）
     - 减少梯度累积：从8降到2（减少内存占用）
-    - 实际有效batch_size = 8 * 2(GPU) * 2 = 32（比原来的16大2倍）
+    - 实际有效batch_size = 16 * 2(GPU) * 2 = 64（比原来的16大4倍）
     - 增加num_workers：加速数据加载
     
-    预期内存占用：8-12GB（双GPU）
-    预期GPU显存占用：8-12GB/GPU（提升4-5倍）
-    预期训练速度：提升3-4倍
+    预期内存占用：10-14GB（双GPU）
+    预期GPU显存占用：12-16GB/GPU（提升6-8倍）
+    预期训练速度：提升5-6倍
     """
     epochs: int = 3                              # 小数据集训练3-5个epoch即可
-    batch_size_per_gpu: int = 8                  # 🚀 从1提升到8，充分利用GPU显存
+    batch_size_per_gpu: int = 16                 # 🚀 从1提升到16，充分利用GPU显存
     
     learn_rate: float = 5e-5                     # 学习率保持不变
     div_factor: int = 25                         # 保持不变
@@ -273,7 +273,7 @@ class TrainConfigSFTFast:
     mixed_precision: str = "bf16"                # 混合精度训练
 
     # 减少梯度累积，因为batch_size已经增大
-    # 实际有效batch_size = 8 * 2(GPU) * 2 = 32
+    # 实际有效batch_size = 16 * 2(GPU) * 2 = 64
     gradient_accumulation_steps: int = 2         # 🚀 从8降到2，减少内存占用
 
     warmup_steps: int = 100                      # 小数据集减少warmup步数
@@ -281,8 +281,8 @@ class TrainConfigSFTFast:
     max_grad_norm: float = 1.0                   # 梯度裁剪
 
     tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
-    model_file: str = PROJECT_ROOT + '/model_save/sft_small/chat_small_t5.{}.bin'
-    model_config_file: str = PROJECT_ROOT + '/model_save/sft_small/model_config.json'
+    model_file: str = PROJECT_ROOT + '/model_save/sft_fast/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/sft_fast/model_config.json'
     
     # 使用prepare_small_sft_data.py生成的小数据集
     train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
@@ -293,12 +293,12 @@ class TrainConfigSFTFast:
     finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
 
     # 训练状态保存
-    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_small/train_latest_state_sft_fast'
-    output_dir: str = PROJECT_ROOT + '/model_save/sft_small'
+    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_fast/train_latest_state_sft_fast'
+    output_dir: str = PROJECT_ROOT + '/model_save/sft_fast'
 
-    # 5000样本，batch_size=8*2*2=32，每个epoch约156步（比原来的312步快一倍）
-    logging_steps: int = 25                      # 每个epoch约6次日志
-    save_steps: int = 156                        # 每个epoch保存1次
+    # 5000样本，batch_size=16*2*2=64，每个epoch约78步（比原来的312步快4倍）
+    logging_steps: int = 15                      # 每个epoch约5次日志
+    save_steps: int = 78                         # 每个epoch保存1次
     
     keep_latest_n_ckp: int = 3                   # 小数据集只保留3个最好的模型
 
