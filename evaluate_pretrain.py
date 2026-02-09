@@ -138,7 +138,9 @@ class PretrainEvaluator:
         
         # 如果指定了最大评估样本数，截取数据集
         if max_eval_samples and max_eval_samples < len(valid_dataset):
-            valid_dataset.data = valid_dataset.data[:max_eval_samples]
+            # 正确截取数据集：同时更新data和length
+            valid_dataset.data = valid_dataset.data.iloc[:max_eval_samples]
+            valid_dataset.length = max_eval_samples
             if accelerator.is_main_process:
                 self.logger.info(f'使用前 {max_eval_samples} 个样本进行快速评估', save_to_file=True)
         
