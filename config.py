@@ -186,6 +186,63 @@ class TrainConfigSFT:
     max_seq_len: int = 256                      # 最大句子长度，默认：256
 
 
+# ===================================================================================
+# 以下为小数据集SFT训练配置 - 针对16G内存优化
+@dataclass
+class TrainConfigSFTSmall:
+    """
+    小数据集SFT训练配置 - 适用于16G内存环境
+    
+    推荐数据量：
+    - 训练集：5,000样本
+    - 验证集：500样本
+    
+    预期内存占用：8-10GB（双GPU）
+    预期训练时长：2-4小时/epoch
+    """
+    epochs: int = 3                              # 小数据集训练3-5个epoch即可，避免过拟合
+    batch_size_per_gpu: int = 1                  # 极致低内存：batch_size=1
+    
+    learn_rate: float = 5e-5                     # 学习率保持不变
+    div_factor: int = 25                         # 保持不变
+
+    mixed_precision: str = "bf16"                # 混合精度训练
+
+    # 小batch_size通过梯度累积补偿
+    # 实际有效batch_size = 1 * 2(GPU) * 8 = 16
+    gradient_accumulation_steps: int = 8         # 梯度累积8步
+
+    warmup_steps: int = 100                      # 小数据集减少warmup步数
+    
+    max_grad_norm: float = 1.0                   # 梯度裁剪
+
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
+    model_file: str = PROJECT_ROOT + '/model_save/sft_small/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/sft_small/model_config.json'
+    
+    # 使用prepare_small_sft_data.py生成的小数据集
+    train_file: str = PROJECT_ROOT + '/data/sft_5k_train.parquet'      # 5千条训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_5k_valid.parquet'  # 500条验证数据
+    test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
+
+    # 从预训练模型开始微调
+    finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
+
+    # 训练状态保存
+    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_small/train_latest_state_sft_small'
+    output_dir: str = PROJECT_ROOT + '/model_save/sft_small'
+
+    # 5000样本，batch_size=1*2*8=16，每个epoch约312步
+    logging_steps: int = 50                      # 每个epoch约6次日志
+    save_steps: int = 312                        # 每个epoch保存1次
+    
+    keep_latest_n_ckp: int = 3                   # 小数据集只保留3个最好的模型
+
+    seed: int = 23333
+    dataloader_buffer_size: int = 10000          # 减小buffer
+    max_seq_len: int = 512                       # 序列长度512
+
+
 
 #======================================================================================
 # 以下为模型的配置
