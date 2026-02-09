@@ -37,6 +37,7 @@
     --save_results: 是否保存详细结果（默认: False）
     --output_file: 结果保存路径（默认: ./evaluation_results.txt）
     --show_examples: 显示多少个预测示例（默认: 10）
+    --search_type: 解码策略，可选greedy/beam/sampling（默认: beam，推荐使用beam避免重复）
 """
 
 import os
@@ -75,6 +76,7 @@ class PretrainEvaluator:
         save_results: bool = False,
         output_file: str = './evaluation_results.txt',
         show_examples: int = 10,
+        search_type: str = 'beam',  # 解码策略: greedy, beam, sampling
         seed: int = 23333,
     ):
         """
@@ -89,6 +91,7 @@ class PretrainEvaluator:
             save_results: 是否保存详细结果
             output_file: 结果保存路径
             show_examples: 显示多少个预测示例
+            search_type: 解码策略(greedy/beam/sampling)
             seed: 随机种子
         """
         # 加载配置
@@ -124,6 +127,7 @@ class PretrainEvaluator:
             self.logger.info(f'验证集: {validation_file}', save_to_file=True)
             self.logger.info(f'使用设备: {device}', save_to_file=True)
             self.logger.info(f'Batch size: {batch_size}', save_to_file=True)
+            self.logger.info(f'解码策略: {search_type}', save_to_file=True)
         
         # 加载数据集
         if accelerator.is_main_process:
@@ -194,6 +198,7 @@ class PretrainEvaluator:
             eval_steps=eval_steps,
             max_seq_len=max_seq_len,
             show_examples=show_examples,
+            search_type=search_type,
         )
         eval_time = time.time() - start_time
         
@@ -230,6 +235,7 @@ class PretrainEvaluator:
         eval_steps,
         max_seq_len,
         show_examples=10,
+        search_type='beam',
     ):
         """执行模型评估"""
         local_sum = 0.0
@@ -276,7 +282,7 @@ class PretrainEvaluator:
                     input_ids=input_ids,
                     attention_mask=input_mask,
                     max_seq_len=max_seq_len,
-                    search_type='greedy',
+                    search_type=search_type,
                 )
                 
                 # 转换为CPU numpy
