@@ -281,8 +281,8 @@ class TrainConfigSFTFast:
     max_grad_norm: float = 1.0                   # 梯度裁剪
 
     tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
-    model_file: str = PROJECT_ROOT + '/model_save/sft_fast/chat_small_t5.{}.bin'
-    model_config_file: str = PROJECT_ROOT + '/model_save/sft_fast/model_config.json'
+    model_file: str = PROJECT_ROOT + '/model_save/sft_small/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/sft_small/model_config.json'
     
     # 使用prepare_small_sft_data.py生成的小数据集
     train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
@@ -293,8 +293,8 @@ class TrainConfigSFTFast:
     finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
 
     # 训练状态保存
-    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_fast/train_latest_state_sft_fast'
-    output_dir: str = PROJECT_ROOT + '/model_save/sft_fast'
+    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_small/train_latest_state_sft_fast'
+    output_dir: str = PROJECT_ROOT + '/model_save/sft_small'
 
     # 5000样本，batch_size=8*2*2=32，每个epoch约156步（比原来的312步快一倍）
     logging_steps: int = 25                      # 每个epoch约6次日志
