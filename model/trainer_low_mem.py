@@ -301,9 +301,17 @@ class ChatTrainerLowMem:
                     f'预训练命令: accelerate launch --multi_gpu --num_processes 2 ./train.py train'
                 )
 
-        # 【关键优化3】禁用num_workers，避免多进程内存开销
-        # 在低内存环境下，多进程会额外占用大量内存
-        num_workers = 0
+        # 【关键优化3】根据内存情况动态调整num_workers
+        # 内存充足时启用多进程加速数据加载，减少GPU等待时间
+        if unuse_mem < 8:
+            num_workers = 0  # 极低内存：禁用多进程
+        elif unuse_mem < 13:
+            num_workers = 0  # 低内存：禁用多进程
+        else:
+            # 内存充足：启用多进程加速
+            cpu_cnt = cpu_count(logical=False)
+            gpu_cnt = torch.cuda.device_count()
+            num_workers = min(4, int(2 * gpu_cnt)) if gpu_cnt > 0 else 2
 
         # 使用LowMemDataset，支持多GPU + 低内存模式
         # ultra_low_mem=True: 每次读取时重新打开文件，避免PyArrow缓存累积
@@ -326,34 +334,49 @@ class ChatTrainerLowMem:
             ultra_low_mem=use_ultra_low_mem,
         )
 
-        # 【关键优化4】使用更小的batch_size
-        # 根据可用内存动态调整batch size
-        if unuse_mem < 13:
-            batch_size = 1  # 极低内存：batch_size=1
-            eval_batch_size = 2  # 评估时稍大
+        # 【关键优化4】根据可用内存动态调整batch_size
+        # 根据可用内存智能选择batch_size
+        if unuse_mem < 8:
+            # 极低内存（<8GB）：强制使用小batch_size
+            batch_size = 1
+            eval_batch_size = 2
+            if accelerator.is_main_process:
+                log.info(f'⚠️  极低内存模式（可用内存<8GB），强制batch_size=1', save_to_file=True)
+        elif unuse_mem < 13:
+            # 低内存（8-13GB）：限制batch_size最大为4
+            batch_size = min(train_config.batch_size_per_gpu, 4)
+            eval_batch_size = min(batch_size * 2, 8)
+            if accelerator.is_main_process:
+                log.info(f'低内存模式（可用内存8-13GB），限制batch_size≤4', save_to_file=True)
         else:
-            batch_size = min(train_config.batch_size_per_gpu, 2)  # 最大2
-            eval_batch_size = min(batch_size * 2, 4)  # 最大4
+            # 内存充足（>13GB）：使用配置的batch_size，充分利用GPU显存
+            batch_size = train_config.batch_size_per_gpu
+            eval_batch_size = batch_size * 3  # 评估时可以用更大的batch_size
+            if accelerator.is_main_process:
+                log.info(f'✅ 内存充足（可用内存>13GB），使用配置的batch_size={batch_size}', save_to_file=True)
 
         if accelerator.is_main_process:
             log.info(f'batch_size_per_gpu: {batch_size} (原配置: {train_config.batch_size_per_gpu})', save_to_file=True)
             log.info(f'eval_batch_size: {eval_batch_size}', save_to_file=True)
 
+        # 根据内存情况决定是否启用pin_memory
+        use_pin_memory = unuse_mem >= 13  # 内存充足时启用pin_memory加速GPU传输
+        
         train_dataloader = DataLoader(
             train_dataset, 
             batch_size=batch_size,  
             shuffle=True,
             collate_fn=train_dataset.collate_fn,
-            pin_memory=False,  # 低内存模式关闭pin_memory
-            num_workers=num_workers,  # 强制0
+            pin_memory=use_pin_memory,  # 内存充足时启用
+            num_workers=num_workers,
         )
         valid_dataloader = DataLoader(
             valid_dataset, 
             batch_size=eval_batch_size,
             shuffle=False,
             collate_fn=valid_dataset.collate_fn,
-            pin_memory=False,  # 低内存模式关闭pin_memory
-            num_workers=num_workers,  # 强制0
+            pin_memory=use_pin_memory,  # 内存充足时启用
+            num_workers=num_workers,
         )
 
         device = accelerator.device
