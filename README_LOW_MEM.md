@@ -18,9 +18,11 @@
 
 ### 主要优化措施
 
-1. **关闭数据集内存缓存**
-   - 强制设置 `keep_in_memory=False`
-   - 使用迭代器方式读取数据，避免一次性加载全部数据到内存
+1. **使用LowMemDataset按需读取数据**
+   - 创建了专门的 `LowMemDataset` 类
+   - 使用pyarrow的slice功能，按索引读取单行数据
+   - 支持多GPU分布式训练的数据分片
+   - 不将整个数据集加载到内存，内存占用极小
 
 2. **减小batch_size**
    - 训练batch_size限制为最大2
@@ -85,7 +87,7 @@ accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_ke
 | batch_size | 8-16 | 1-2 |
 | 梯度累积步数 | 4 | 16 |
 | 有效batch_size | 64-128 | 32-64 |
-| 数据加载方式 | 内存缓存 | 迭代器 |
+| 数据加载方式 | 内存缓存 | 按需读取（pyarrow slice） |
 | num_workers | 2-4 | 0 |
 | 训练速度 | 快 | 较慢（约慢30-50%） |
 

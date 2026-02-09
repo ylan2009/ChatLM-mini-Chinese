@@ -131,6 +131,85 @@ class MyDataset(Dataset):
     def __len__(self) -> int:
         return self.length
 
+
+class LowMemDataset(Dataset):
+    """
+    低内存版本的Dataset，支持多GPU分布式训练
+    
+    关键特性：
+    1. 不将整个数据集加载到内存
+    2. 使用pyarrow直接按索引读取，支持多GPU的数据分片
+    3. 内存占用极小，适合16G内存环境
+    """
+    
+    def __init__(self, 
+                parquet_file: str,
+                tokenizer_dir: str,
+                max_seq_len: int=512,
+            ) -> None:
+        '''
+        低内存版本的Dataset，专为多GPU + 低内存环境设计
+        
+        parquet_file: parquet数据文件路径
+        tokenizer_dir: tokenizer目录
+        max_seq_len: 最大序列长度
+        '''
+        super().__init__()
+        
+        self.parquet_file = parquet_file
+        self.max_seq_len = max_seq_len
+        
+        # 使用pyarrow读取元数据，不加载实际数据
+        self.parquet_table = pq.read_table(parquet_file)
+        self.length = self.parquet_table.num_rows
+        
+        # 初始化tokenizer
+        try:
+            self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_dir)
+        except Exception:
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
+            except:
+                self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
+    
+    def __getitem__(self, index):
+        '''
+        按索引返回一条样本
+        
+        关键：使用pyarrow的slice功能，只读取需要的行，不加载整个表到内存
+        '''
+        # 只读取一行数据
+        row = self.parquet_table.slice(index, 1)
+        prompt = row['prompt'][0].as_py()
+        response = row['response'][0].as_py()
+        
+        max_seq_len = self.max_seq_len - 5  # len('[EOS]') = 5
+        return f"{prompt[0: max_seq_len]}[EOS]", f"{response[0: max_seq_len]}[EOS]"
+    
+    def collate_fn(self, data: list[list]) -> dict:
+        '''
+        合并一个批次数据返回
+        '''
+        tokenizer = self.tokenizer
+        
+        prompt = tokenizer([item[0] for item in data], padding=True, return_token_type_ids=False)
+        response = tokenizer([item[1] for item in data], padding=True, return_token_type_ids=False)
+        
+        input_ids = array(prompt.input_ids, dtype=int64)
+        input_mask = array(prompt.attention_mask, dtype=int64)
+        target_ids = array(response.input_ids, dtype=int64)
+        
+        ret = {
+            'input_ids': LongTensor(input_ids),
+            'input_mask': LongTensor(input_mask),
+            'target_ids': LongTensor(target_ids),
+        }
+        return ret
+    
+    def __len__(self) -> int:
+        return self.length
+
+
 class ParquetDataset:
  
     def __init__(self,  

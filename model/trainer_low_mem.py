@@ -22,7 +22,7 @@ from accelerate.utils import set_seed
 # import 自定义类和函数
 from model.chat_model import TextToTextModel
 from utils.logger import Logger
-from model.dataset import MyDataset
+from model.dataset import LowMemDataset
 from config import TrainConfig, TrainConfigSFT, T5ModelConfig
 from utils.functions import (
     get_bleu4_score, 
@@ -261,10 +261,6 @@ class ChatTrainerLowMem:
             project_dir=train_config.train_state_dir,
         )
 
-        # 【关键优化2】强制关闭keep_in_memory，使用迭代器方式
-        # 16G内存无法同时容纳数据集+模型+优化器状态
-        keep_in_memory = False
-
         if accelerator.is_main_process:
             unuse_mem = virtual_memory().available / (1024 ** 3)  # 单位：GB
             unuse_disk = get_free_space_of_disk('./')
@@ -273,7 +269,7 @@ class ChatTrainerLowMem:
             log.info('低内存模式训练 - 针对16G内存优化', save_to_file=True)
             log.info('=' * 80, save_to_file=True)
             log.info('cpu memory available: {:.2f} GB, disk space available: {:.2f} GB'.format(unuse_mem, unuse_disk), save_to_file=True)
-            log.info('keep dataset in memory: {} (强制关闭以节省内存)'.format(keep_in_memory), save_to_file=True)
+            log.info('使用LowMemDataset: 支持多GPU + 低内存模式，按需从磁盘读取数据', save_to_file=True)
             log.info('gradient accumulation steps: {} (增加以补偿小batch size)'.format(accumulation_steps), save_to_file=True)
             log.info('operation: {}, keep training: {}, loading datasets ...'.format('finetune' if is_finetune else 'train', is_keep_training))
             
@@ -303,16 +299,15 @@ class ChatTrainerLowMem:
         # 在低内存环境下，多进程会额外占用大量内存
         num_workers = 0
 
-        train_dataset = MyDataset(
+        # 使用LowMemDataset，支持多GPU + 低内存模式
+        train_dataset = LowMemDataset(
             parquet_file=train_config.train_file,
             tokenizer_dir=train_config.tokenizer_dir,
-            keep_in_memory=keep_in_memory,  # 强制False
             max_seq_len=train_config.max_seq_len,
         )
-        valid_dataset = MyDataset(
+        valid_dataset = LowMemDataset(
             parquet_file=train_config.validation_file,
             tokenizer_dir=train_config.tokenizer_dir,
-            keep_in_memory=keep_in_memory,  # 强制False
             max_seq_len=train_config.max_seq_len,
         )
 
@@ -652,10 +647,9 @@ class ChatTrainerLowMem:
         # args for dataloader
         num_workers = 0  # 低内存模式强制0
 
-        test_dataset = MyDataset(
+        test_dataset = LowMemDataset(
             parquet_file=train_config.train_file,
             tokenizer_dir=train_config.tokenizer_dir,
-            keep_in_memory=False,  # 低内存模式强制False
             max_seq_len=train_config.max_seq_len,
         )
         
