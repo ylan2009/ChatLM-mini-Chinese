@@ -243,6 +243,69 @@ class TrainConfigSFTSmall:
     max_seq_len: int = 512                       # 序列长度512
 
 
+# ===================================================================================
+# 以下为高性能SFT训练配置 - 充分利用GPU显存
+@dataclass
+class TrainConfigSFTFast:
+    """
+    高性能SFT训练配置 - 充分利用GPU显存（20GB × 2）
+    
+    推荐数据量：
+    - 训练集：5,000样本
+    - 验证集：500样本
+    
+    优化策略：
+    - 增大batch_size：从1提升到8（充分利用GPU显存）
+    - 减少梯度累积：从8降到2（减少内存占用）
+    - 实际有效batch_size = 8 * 2(GPU) * 2 = 32（比原来的16大2倍）
+    - 增加num_workers：加速数据加载
+    
+    预期内存占用：8-12GB（双GPU）
+    预期GPU显存占用：8-12GB/GPU（提升4-5倍）
+    预期训练速度：提升3-4倍
+    """
+    epochs: int = 3                              # 小数据集训练3-5个epoch即可
+    batch_size_per_gpu: int = 8                  # 🚀 从1提升到8，充分利用GPU显存
+    
+    learn_rate: float = 5e-5                     # 学习率保持不变
+    div_factor: int = 25                         # 保持不变
+
+    mixed_precision: str = "bf16"                # 混合精度训练
+
+    # 减少梯度累积，因为batch_size已经增大
+    # 实际有效batch_size = 8 * 2(GPU) * 2 = 32
+    gradient_accumulation_steps: int = 2         # 🚀 从8降到2，减少内存占用
+
+    warmup_steps: int = 100                      # 小数据集减少warmup步数
+    
+    max_grad_norm: float = 1.0                   # 梯度裁剪
+
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
+    model_file: str = PROJECT_ROOT + '/model_save/sft_fast/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/sft_fast/model_config.json'
+    
+    # 使用prepare_small_sft_data.py生成的小数据集
+    train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_train_small_valid.parquet'  # 小数据集验证数据
+    test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
+
+    # 从预训练模型开始微调
+    finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
+
+    # 训练状态保存
+    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_fast/train_latest_state_sft_fast'
+    output_dir: str = PROJECT_ROOT + '/model_save/sft_fast'
+
+    # 5000样本，batch_size=8*2*2=32，每个epoch约156步（比原来的312步快一倍）
+    logging_steps: int = 25                      # 每个epoch约6次日志
+    save_steps: int = 156                        # 每个epoch保存1次
+    
+    keep_latest_n_ckp: int = 3                   # 小数据集只保留3个最好的模型
+
+    seed: int = 23333
+    dataloader_buffer_size: int = 10000          # 减小buffer
+    max_seq_len: int = 512                       # 序列长度512
+
 
 #======================================================================================
 # 以下为模型的配置

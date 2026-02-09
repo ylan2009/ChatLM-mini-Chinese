@@ -77,7 +77,7 @@ print("=" * 80)
 
 import fire
 
-from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, TrainConfigSFTFast, T5ModelConfig
 from model.trainer_low_mem import ChatTrainerLowMem
 
 
@@ -87,18 +87,25 @@ class TrainWrapper:
     def __init__(self):
         self.model_config = T5ModelConfig()
     
-    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_small_config: bool = False, **kwargs):
+    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_small_config: bool = False, use_fast_config: bool = False, **kwargs):
         """
         训练函数
         
         参数：
             is_keep_training: 是否从断点继续训练
             is_finetune: 是否进行SFT微调
-            use_small_config: 是否使用小数据集配置（TrainConfigSFTSmall）
+            use_small_config: 是否使用小数据集配置（TrainConfigSFTSmall - 低内存）
+            use_fast_config: 是否使用高性能配置（TrainConfigSFTFast - 充分利用GPU显存）
             **kwargs: 其他参数（如epochs, learn_rate等）
         """
         # 根据参数选择配置
-        if use_small_config:
+        if use_fast_config:
+            # 使用高性能配置
+            print("=" * 80)
+            print("使用 TrainConfigSFTFast 配置（高性能 - 充分利用GPU显存）")
+            print("=" * 80)
+            train_config = TrainConfigSFTFast()
+        elif use_small_config:
             # 使用小数据集配置
             print("=" * 80)
             print("使用 TrainConfigSFTSmall 配置（小数据集 - 适合16G内存）")
