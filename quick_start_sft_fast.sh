@@ -38,6 +38,7 @@ echo ""
 
 # 强制使用 Gloo 后端（避免NCCL共享内存问题）
 export ACCELERATE_USE_GLOO=1
+export NCCL_SHM_DISABLE=1
 
 # 启动训练
 accelerate launch --multi_gpu --num_processes 2 \
