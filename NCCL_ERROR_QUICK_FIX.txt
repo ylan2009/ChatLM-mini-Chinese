@@ -1,0 +1,125 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    NCCL 共享内存错误 - 快速修复                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+🔴 错误信息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  torch.distributed.DistBackendError: NCCL error
+  Error while attaching to shared memory segment /dev/shm/nccl-*
+  No such file or directory (2)
+
+🎯 问题原因
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  /dev/shm (共享内存) 空间不足或存在残留的NCCL文件
+
+✅ 最快的解决方法（推荐）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  方案A: 使用修复后的脚本（已内置环境变量配置）
+  
+  # 直接运行，脚本已自动配置 NCCL 环境变量
+  accelerate launch --multi_gpu --num_processes 2 \
+      ./train_low_mem.py train \
+      --is_finetune=True \
+      --use_small_config=True
+
+  方案B: 手动清理（如果方案A无效）
+  
+  # 1. 清理共享内存
+  sudo rm -f /dev/shm/nccl-*
+
+  # 2. 杀死残留进程
+  ps aux | grep train_low_mem | grep -v grep | awk '{print $2}' | xargs kill -9
+
+  # 3. 重新运行训练
+  accelerate launch --multi_gpu --num_processes 2 \
+      ./train_low_mem.py train \
+      --is_finetune=True \
+      --use_small_config=True
+
+🔧 使用修复脚本（更简单）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 在服务器上运行
+  chmod +x fix_nccl.sh
+  ./fix_nccl.sh
+
+  # 然后重新运行训练命令
+
+🔄 备选方案1：禁用NCCL共享内存
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  export NCCL_SHM_DISABLE=1
+  
+  accelerate launch --multi_gpu --num_processes 2 \
+      ./train_low_mem.py train \
+      --is_finetune=True \
+      --use_small_config=True
+
+🔄 备选方案2：使用 Gloo 后端（兼容性最好）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Gloo 后端不依赖 NCCL，兼容性更好
+  export ACCELERATE_USE_GLOO=1
+  
+  accelerate launch --multi_gpu --num_processes 2 \
+      ./train_low_mem.py train \
+      --is_finetune=True \
+      --use_small_config=True
+
+🔄 备选方案3：使用单GPU训练
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 单GPU不需要NCCL，不会有这个问题
+  python train_low_mem.py train \
+      --is_finetune=True \
+      --use_small_config=True
+
+🔍 诊断命令
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 运行完整诊断（推荐）
+  chmod +x fix_nccl.sh
+  ./fix_nccl.sh
+
+  # 或者手动诊断
+  # 检查共享内存空间
+  df -h /dev/shm
+
+  # 查看共享内存中的文件
+  ls -lh /dev/shm/
+
+  # 检查残留进程
+  ps aux | grep train_low_mem
+
+  # 检查GPU状态
+  nvidia-smi
+  
+  # 运行 NCCL 诊断脚本
+  python diagnose_nccl.py
+  
+  # 多进程 NCCL 诊断
+  accelerate launch --multi_gpu --num_processes 2 ./diagnose_nccl.py
+
+📚 详细说明
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  查看完整修复指南:
+  cat FIX_NCCL_ERROR.md
+
+⚠️  注意事项
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. 清理 /dev/shm/nccl-* 是安全的，这些是NCCL的临时文件
+  2. 如果没有sudo权限，使用备选方案1或2
+  3. 清理后一定要重新运行训练命令，不要直接继续
+
+✅ 验证修复成功
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  如果看到以下输出，说明修复成功：
+
+  ================================================================================
+  使用 TrainConfigSFTSmall 配置（小数据集 - 适合16G内存）
+  ================================================================================
+  [INFO]: 低内存模式训练 - 针对16G内存优化
+  [INFO]: train dataset size: 5000, steps per epoch:2500
+  ...
+
+  然后训练会正常开始，不会再报NCCL错误。
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  立即执行：sudo rm -f /dev/shm/nccl-*                                       ║
+║  然后重新运行训练命令                                                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝

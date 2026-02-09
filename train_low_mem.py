@@ -46,6 +46,35 @@
     - TrainConfigSFTSmall: SFT微调配置（小数据集，适合16G内存）
 """
 
+# ============================================================================
+# 【重要】NCCL 环境变量配置 - 解决共享内存问题
+# ============================================================================
+import os
+
+# 方案1: 使用 socket 通信替代共享内存（推荐）
+# 这会稍微降低通信速度，但能避免共享内存问题
+os.environ.setdefault('NCCL_SHM_DISABLE', '0')  # 0=启用共享内存, 1=禁用
+
+# 方案2: 增加 NCCL 超时时间（避免初始化超时）
+os.environ.setdefault('NCCL_TIMEOUT', '1800')  # 30分钟超时
+
+# 方案3: 启用 NCCL 调试信息（如果需要诊断问题）
+# os.environ.setdefault('NCCL_DEBUG', 'INFO')  # 取消注释以启用调试
+
+# 方案4: 设置 NCCL 使用的网络接口（如果有多个网卡）
+# os.environ.setdefault('NCCL_SOCKET_IFNAME', 'eth0')  # 根据实际网卡名称修改
+
+# 方案5: 使用 Gloo 后端替代 NCCL（兼容性更好，但速度稍慢）
+# 如果 NCCL 问题无法解决，可以尝试这个
+# os.environ.setdefault('ACCELERATE_USE_GLOO', '1')
+
+print("=" * 80)
+print("NCCL 环境变量配置:")
+print(f"  NCCL_SHM_DISABLE: {os.environ.get('NCCL_SHM_DISABLE', 'not set')}")
+print(f"  NCCL_TIMEOUT: {os.environ.get('NCCL_TIMEOUT', 'not set')}")
+print("=" * 80)
+# ============================================================================
+
 import fire
 
 from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, T5ModelConfig
