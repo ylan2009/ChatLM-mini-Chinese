@@ -140,12 +140,14 @@ class LowMemDataset(Dataset):
     1. 不将整个数据集加载到内存
     2. 使用pyarrow直接按索引读取，支持多GPU的数据分片
     3. 内存占用极小，适合16G内存环境
+    4. 支持ultra_low_mem模式，每次读取时重新打开文件，避免缓存
     """
     
     def __init__(self, 
                 parquet_file: str,
                 tokenizer_dir: str,
                 max_seq_len: int=512,
+                ultra_low_mem: bool=False,
             ) -> None:
         '''
         低内存版本的Dataset，专为多GPU + 低内存环境设计
@@ -153,15 +155,24 @@ class LowMemDataset(Dataset):
         parquet_file: parquet数据文件路径
         tokenizer_dir: tokenizer目录
         max_seq_len: 最大序列长度
+        ultra_low_mem: 超低内存模式，每次读取时重新打开文件（更慢但内存占用更小）
         '''
         super().__init__()
         
         self.parquet_file = parquet_file
         self.max_seq_len = max_seq_len
+        self.ultra_low_mem = ultra_low_mem
         
-        # 使用pyarrow读取元数据，不加载实际数据
-        self.parquet_table = pq.read_table(parquet_file)
-        self.length = self.parquet_table.num_rows
+        if ultra_low_mem:
+            # 超低内存模式：只读取元数据获取长度，不保留table引用
+            parquet_table = pq.read_table(parquet_file)
+            self.length = parquet_table.num_rows
+            del parquet_table  # 立即释放
+            self.parquet_table = None
+        else:
+            # 标准低内存模式：保留table引用用于快速读取
+            self.parquet_table = pq.read_table(parquet_file)
+            self.length = self.parquet_table.num_rows
         
         # 初始化tokenizer
         try:
@@ -178,10 +189,18 @@ class LowMemDataset(Dataset):
         
         关键：使用pyarrow的slice功能，只读取需要的行，不加载整个表到内存
         '''
-        # 只读取一行数据
-        row = self.parquet_table.slice(index, 1)
-        prompt = row['prompt'][0].as_py()
-        response = row['response'][0].as_py()
+        if self.ultra_low_mem:
+            # 超低内存模式：每次都重新打开文件读取
+            # 这样避免了pyarrow的内部缓存累积，但速度会慢一些
+            parquet_file = pq.ParquetFile(self.parquet_file)
+            row = parquet_file.read_row_group(index // 1000).slice(index % 1000, 1)
+            prompt = row['prompt'][0].as_py()
+            response = row['response'][0].as_py()
+        else:
+            # 标准模式：使用已加载的table
+            row = self.parquet_table.slice(index, 1)
+            prompt = row['prompt'][0].as_py()
+            response = row['response'][0].as_py()
         
         max_seq_len = self.max_seq_len - 5  # len('[EOS]') = 5
         return f"{prompt[0: max_seq_len]}[EOS]", f"{response[0: max_seq_len]}[EOS]"

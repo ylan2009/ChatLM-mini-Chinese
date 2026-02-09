@@ -272,6 +272,48 @@ python train_tokenizer.py
 
 ## 3.4 Text-to-Text 预训练 
 
+### 💾 低内存训练模式（16G内存环境）
+
+如果你的机器内存有限（16G或更少），推荐使用低内存训练模式：
+
+```bash
+# 低内存模式训练（自动优化内存使用）
+accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train
+
+# 低内存模式SFT微调
+accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True
+```
+
+**低内存模式特性：**
+- ✅ 自动检测可用内存并优化配置
+- ✅ 支持多GPU训练（内存占用更低）
+- ✅ 使用ultra_low_mem模式避免PyArrow缓存累积
+- ✅ 自动调整batch size和梯度累积步数
+- ✅ 频繁清理内存，防止内存泄漏
+- ✅ 实时监控内存使用情况
+
+**内存优化配置：**
+
+如需进一步优化内存使用，可以使用配置脚本：
+
+```bash
+# 查看当前配置
+python apply_low_mem_config.py --show
+
+# 应用极致低内存模式（~8-10GB）
+python apply_low_mem_config.py --mode ultra
+
+# 应用平衡模式（~10-12GB）
+python apply_low_mem_config.py --mode balanced
+
+# 恢复默认配置
+python apply_low_mem_config.py --mode restore
+```
+
+详细的内存优化指南请参考：[MEMORY_OPTIMIZATION.md](./MEMORY_OPTIMIZATION.md)
+
+### 📊 标准训练模式（48G+内存环境）
+
 1. 预训练数据集示例
 ```json
 {

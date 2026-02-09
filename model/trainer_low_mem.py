@@ -249,9 +249,14 @@ class ChatTrainerLowMem:
         save_steps = self.train_config.save_steps
         logging_steps = self.train_config.logging_steps
 
-        # 【关键优化1】增加梯度累计步数，用小batch size配合梯度累积
-        # 原始可能是4，这里改为8或16，这样即使batch_size=1也能达到有效batch size=8或16
-        accumulation_steps = max(train_config.gradient_accumulation_steps, 16)
+        # 【关键优化1】梯度累计步数：平衡内存和训练效果
+        # 减小梯度累积步数可以降低内存占用（不保留太多中间计算图）
+        # 对于极低内存环境（<13G可用），使用8；否则使用16
+        unuse_mem_gb = virtual_memory().available / (1024 ** 3)
+        if unuse_mem_gb < 13:
+            accumulation_steps = 8  # 极低内存模式
+        else:
+            accumulation_steps = max(train_config.gradient_accumulation_steps, 16)
 
         set_seed(train_config.seed)
 
@@ -300,22 +305,34 @@ class ChatTrainerLowMem:
         num_workers = 0
 
         # 使用LowMemDataset，支持多GPU + 低内存模式
+        # ultra_low_mem=True: 每次读取时重新打开文件，避免PyArrow缓存累积
+        # 这会稍微降低速度，但能显著减少内存占用
+        use_ultra_low_mem = unuse_mem < 13  # 可用内存<13GB时启用超低内存模式
+        
+        if accelerator.is_main_process:
+            log.info(f'ultra_low_mem模式: {use_ultra_low_mem} (可用内存: {unuse_mem:.2f}GB)', save_to_file=True)
+        
         train_dataset = LowMemDataset(
             parquet_file=train_config.train_file,
             tokenizer_dir=train_config.tokenizer_dir,
             max_seq_len=train_config.max_seq_len,
+            ultra_low_mem=use_ultra_low_mem,
         )
         valid_dataset = LowMemDataset(
             parquet_file=train_config.validation_file,
             tokenizer_dir=train_config.tokenizer_dir,
             max_seq_len=train_config.max_seq_len,
+            ultra_low_mem=use_ultra_low_mem,
         )
 
         # 【关键优化4】使用更小的batch_size
-        # 原始可能是8或16，这里改为1或2
-        batch_size = min(train_config.batch_size_per_gpu, 2)  # 最大2
-        # 评估时也使用小batch size，避免OOM
-        eval_batch_size = min(batch_size * 2, 4)  # 最大4
+        # 根据可用内存动态调整batch size
+        if unuse_mem < 13:
+            batch_size = 1  # 极低内存：batch_size=1
+            eval_batch_size = 2  # 评估时稍大
+        else:
+            batch_size = min(train_config.batch_size_per_gpu, 2)  # 最大2
+            eval_batch_size = min(batch_size * 2, 4)  # 最大4
 
         if accelerator.is_main_process:
             log.info(f'batch_size_per_gpu: {batch_size} (原配置: {train_config.batch_size_per_gpu})', save_to_file=True)
@@ -528,8 +545,14 @@ class ChatTrainerLowMem:
                 # ==================================以上记录loss到日志============================================
                 
                 # 【关键优化6】定期清理内存
-                if step % 100 == 0:
+                # 更频繁地清理内存，每50步清理一次
+                if step % 50 == 0:
                     self.clear_memory()
+                
+                # 每200步强制清理并记录内存使用
+                if step % 200 == 0 and accelerator.is_main_process:
+                    self.clear_memory()
+                    self.log_memory_usage(f"Epoch {epoch} Step {step}")
             
             #  end for batch setps
 
