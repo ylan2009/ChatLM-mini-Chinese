@@ -94,7 +94,7 @@ class SFTconfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfig:
-    epochs: int = 2
+    epochs: int = 5                                 # 增加到5个epoch，让模型充分学习
     batch_size_per_gpu: int = 16
     
     learn_rate: float = 0.0001                      # 最大 div_factor * learn_rate
@@ -156,7 +156,7 @@ class TrainConfigSFT:
     
     max_grad_norm: float = 1.0                     # 添加梯度裁剪，防止梯度爆炸导致loss波动
 
-    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_wiki/'  # tokenizer一般和model权重放在同一个文件夹
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'  # tokenizer一般和model权重放在同一个文件夹
     model_file: str = PROJECT_ROOT + '/model_save/sft/chat_small_t5.{}.bin'
     model_config_file: str = PROJECT_ROOT + '/model_save/sft/model_config.json'
     train_file: str = PROJECT_ROOT + '/data/sft_train_dataset_10k.parquet'      # 1万条训练数据
@@ -221,8 +221,8 @@ class TrainConfigSFTSmall:
     model_config_file: str = PROJECT_ROOT + '/model_save/sft_small/model_config.json'
     
     # 使用prepare_small_sft_data.py生成的小数据集
-    train_file: str = PROJECT_ROOT + '/data/sft_5k_train.parquet'      # 5千条训练数据
-    validation_file: str = PROJECT_ROOT + '/data/sft_5k_valid.parquet'  # 500条验证数据
+    train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_train_small_valid.parquet'  # 小数据集验证数据
     test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
 
     # 从预训练模型开始微调

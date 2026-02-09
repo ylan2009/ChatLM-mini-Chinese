@@ -7,8 +7,11 @@
     # 预训练（使用默认配置）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train
     
-    # SFT微调（使用默认配置）
+    # SFT微调（使用TrainConfigSFT配置）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True
+    
+    # SFT微调（使用TrainConfigSFTSmall配置 - 小数据集）
+    accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True --use_small_config=True
     
     # 预训练（自定义学习率和训练轮数）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --epochs=10 --learn_rate=0.0002
@@ -23,6 +26,7 @@
     train: 执行训练函数
     --is_keep_training: 是否从断点处加载状态继续训练（默认: False）
     --is_finetune: 是否微调，微调会冻结encoder和embedding（默认: False）
+    --use_small_config: 是否使用TrainConfigSFTSmall配置（小数据集配置）（默认: False）
     --epochs: 训练轮数，如果指定则覆盖TrainConfig中的默认值（默认: 8）
     --learn_rate: 学习率，如果指定则覆盖TrainConfig中的默认值（默认: 0.0001）
                   注意：SFT微调时建议使用更小的学习率，如 1e-5
@@ -35,24 +39,96 @@
     4. 禁用DataLoader的num_workers，避免多进程内存开销
     5. 定期清理GPU和CPU缓存
     6. 添加内存使用监控
+
+配置说明：
+    - TrainConfig: 预训练配置
+    - TrainConfigSFT: SFT微调配置（标准数据集）
+    - TrainConfigSFTSmall: SFT微调配置（小数据集，适合16G内存）
 """
 
 import fire
 
-from config import TrainConfig, TrainConfigSFT, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, T5ModelConfig
 from model.trainer_low_mem import ChatTrainerLowMem
 
 
+class TrainWrapper:
+    """训练包装类，用于支持配置选择"""
+    
+    def __init__(self):
+        self.model_config = T5ModelConfig()
+    
+    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_small_config: bool = False, **kwargs):
+        """
+        训练函数
+        
+        参数：
+            is_keep_training: 是否从断点继续训练
+            is_finetune: 是否进行SFT微调
+            use_small_config: 是否使用小数据集配置（TrainConfigSFTSmall）
+            **kwargs: 其他参数（如epochs, learn_rate等）
+        """
+        # 根据参数选择配置
+        if use_small_config:
+            # 使用小数据集配置
+            print("=" * 80)
+            print("使用 TrainConfigSFTSmall 配置（小数据集 - 适合16G内存）")
+            print("=" * 80)
+            train_config = TrainConfigSFTSmall()
+        elif is_finetune:
+            # 使用标准SFT配置
+            print("=" * 80)
+            print("使用 TrainConfigSFT 配置（标准SFT微调）")
+            print("=" * 80)
+            train_config = TrainConfigSFT()
+        else:
+            # 使用预训练配置
+            print("=" * 80)
+            print("使用 TrainConfig 配置（预训练）")
+            print("=" * 80)
+            train_config = TrainConfig()
+        
+        # 如果有自定义参数，覆盖配置
+        if kwargs:
+            print("\n自定义参数:")
+            for key, value in kwargs.items():
+                if hasattr(train_config, key):
+                    old_value = getattr(train_config, key)
+                    setattr(train_config, key, value)
+                    print(f"  {key}: {old_value} -> {value}")
+                else:
+                    print(f"  警告: 配置中不存在参数 '{key}'，已忽略")
+            print()
+        
+        # 创建训练器并开始训练
+        chat_trainer = ChatTrainerLowMem(train_config=train_config, model_config=self.model_config)
+        chat_trainer.train(is_keep_training=is_keep_training, is_finetune=is_finetune)
+    
+    def test(self, best_epoch: int = 0, use_small_config: bool = False):
+        """
+        测试函数
+        
+        参数：
+            best_epoch: 要测试的epoch编号
+            use_small_config: 是否使用小数据集配置
+        """
+        # 根据参数选择配置
+        if use_small_config:
+            train_config = TrainConfigSFTSmall()
+        else:
+            train_config = TrainConfigSFT()
+        
+        chat_trainer = ChatTrainerLowMem(train_config=train_config, model_config=self.model_config)
+        chat_trainer.test(best_epoch=best_epoch)
+
+
 if __name__ == '__main__':
-    # 默认使用 TrainConfig 进行预训练
-    # 如果需要使用 TrainConfigSFT 进行 SFT 微调，可以修改这里
-    train_config = TrainConfig()
-    model_config = T5ModelConfig()
-
-    chat_trainer = ChatTrainerLowMem(train_config=train_config, model_config=model_config)
-
+    # 使用包装类支持配置选择
+    wrapper = TrainWrapper()
+    
     # 解析命令行参数，执行指定函数
     # fire.Fire 会自动将命令行参数映射到函数参数
-    # 例如：--epochs=5 会传递给 train(epochs=5)
-    # 注意：SFT微调时建议设置 is_finetune=True
-    fire.Fire(component=chat_trainer)
+    # 例如：
+    #   train --is_finetune=True --use_small_config=True
+    #   train --is_finetune=True --epochs=5 --learn_rate=1e-5
+    fire.Fire(component=wrapper)
