@@ -192,10 +192,12 @@ class LowMemDataset(Dataset):
         if self.ultra_low_mem:
             # 超低内存模式：每次都重新打开文件读取
             # 这样避免了pyarrow的内部缓存累积，但速度会慢一些
-            parquet_file = pq.ParquetFile(self.parquet_file)
-            row = parquet_file.read_row_group(index // 1000).slice(index % 1000, 1)
+            # 注意：不能使用 read_row_group，因为小数据集可能只有1个row_group
+            parquet_table = pq.read_table(self.parquet_file)
+            row = parquet_table.slice(index, 1)
             prompt = row['prompt'][0].as_py()
             response = row['response'][0].as_py()
+            del parquet_table  # 立即释放内存
         else:
             # 标准模式：使用已加载的table
             row = self.parquet_table.slice(index, 1)

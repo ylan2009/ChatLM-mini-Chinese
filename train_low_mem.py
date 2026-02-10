@@ -12,6 +12,8 @@
     
     # SFT微调（使用TrainConfigSFTSmall配置 - 小数据集）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True --use_small_config=True
+
+    accelerate launch --multi_gpu --num_processes 3 ./train_low_mem.py train --is_finetune=True --use_fast_config=True
     
     # 预训练（自定义学习率和训练轮数）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --epochs=10 --learn_rate=0.0002
