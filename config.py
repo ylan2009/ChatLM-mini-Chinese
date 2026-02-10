@@ -265,7 +265,7 @@ class TrainConfigSFTFast:
     预期训练速度：提升5-6倍
     """
     epochs: int = 3                              # 小数据集训练3-5个epoch即可
-    batch_size_per_gpu: int = 16                # 🚀 从1提升到16，充分利用GPU显存
+    batch_size_per_gpu: int = 24                # 🚀 从1提升到16，充分利用GPU显存
     
     learn_rate: float = 5e-5                     # 学习率保持不变
     div_factor: int = 25                         # 保持不变
