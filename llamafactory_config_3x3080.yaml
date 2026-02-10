@@ -1,0 +1,87 @@
+### LLaMA-Factory 配置文件
+### 硬件配置: 3×RTX 3080 20GB + 12GB RAM
+### 优化目标: 充分利用GPU显存，降低内存占用
+
+# ========== 模型配置 ==========
+model_name_or_path: ./model_save/ChatLM-mini-Chinese/
+finetuning_type: full  # full=全量微调, lora=LoRA微调, freeze=部分冻结
+
+# ========== 数据配置 ==========
+dataset: custom_t5_dataset
+template: default
+cutoff_len: 512  # 最大序列长度
+preprocessing_num_workers: 2  # 降低内存占用（12GB内存建议用2）
+max_samples: 10000000  # 最大样本数（1000万）
+
+# ========== 训练阶段 ==========
+stage: pt  # pt=预训练, sft=监督微调, rm=奖励模型, ppo=强化学习
+do_train: true
+do_eval: true
+
+# ========== 输出配置 ==========
+output_dir: ./model_save/llamafactory_3x3080_output
+overwrite_output_dir: true
+overwrite_cache: true  # 覆盖缓存，节省磁盘空间
+
+# ========== 训练超参数（针对3×20GB GPU优化） ==========
+per_device_train_batch_size: 8  # 每张卡batch size=8（20GB显存足够）
+per_device_eval_batch_size: 16  # 评估时可以更大
+gradient_accumulation_steps: 16  # 梯度累积，有效batch=8×3×16=384
+learning_rate: 0.0001
+num_train_epochs: 5
+max_steps: -1  # -1表示使用num_train_epochs
+
+# ========== 优化器配置 ==========
+optim: adafactor  # Adafactor节省显存（不存储动量）
+lr_scheduler_type: cosine
+warmup_steps: 1024
+warmup_ratio: 0.0  # 使用warmup_steps，不用warmup_ratio
+max_grad_norm: 1.0
+
+# ========== 混合精度（重要！节省显存） ==========
+bf16: true  # 使用BF16混合精度（RTX 3080支持）
+fp16: false  # 不使用FP16
+bf16_full_eval: true  # 评估时也用BF16
+
+# ========== 内存优化（关键配置） ==========
+gradient_checkpointing: true  # 梯度检查点，节省显存
+gradient_checkpointing_kwargs:
+  use_reentrant: false  # 新版本推荐设置
+
+# ========== 日志配置 ==========
+logging_steps: 50
+save_steps: 5000
+save_total_limit: 3  # 只保留3个checkpoint（节省磁盘空间）
+save_strategy: steps
+save_only_model: false  # 保存完整checkpoint（包括优化器状态）
+
+# ========== 评估配置 ==========
+evaluation_strategy: steps
+eval_steps: 5000
+eval_delay: 0
+load_best_model_at_end: true
+metric_for_best_model: eval_loss
+greater_is_better: false
+
+# ========== 分布式训练配置（3 GPU） ==========
+ddp_timeout: 3600  # 1小时超时
+ddp_find_unused_parameters: false  # 加速训练
+dataloader_num_workers: 0  # 低内存模式：禁用多进程加载
+dataloader_pin_memory: false  # 低内存模式：禁用pin memory
+dataloader_prefetch_factor: null  # 不预取数据
+
+# ========== DeepSpeed ZeRO-2 配置（推荐！） ==========
+# DeepSpeed可以进一步优化显存使用
+deepspeed: ds_config_zero2.json  # 使用ZeRO-2配置
+
+# ========== 其他配置 ==========
+report_to: [tensorboard]  # 使用TensorBoard记录日志
+logging_dir: ./logs/llamafactory_3x3080
+plot_loss: true  # 绘制损失曲线
+remove_unused_columns: true  # 移除未使用的列
+include_num_input_tokens_seen: true  # 记录已处理的token数
+
+# ========== 低内存模式配置 ==========
+# 针对12GB内存的优化
+torch_empty_cache_steps: 100  # 每100步清理GPU缓存
+max_length: 512  # 限制最大长度
