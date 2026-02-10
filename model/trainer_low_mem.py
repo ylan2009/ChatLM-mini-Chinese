@@ -342,7 +342,7 @@ class ChatTrainerLowMem:
             eval_batch_size = 2
             if accelerator.is_main_process:
                 log.info(f'⚠️  极低内存模式（可用内存<8GB），强制batch_size=1', save_to_file=True)
-        elif unuse_mem < 13:
+        elif unuse_mem < 10:
             # 低内存（8-13GB）：限制batch_size最大为4
             batch_size = min(train_config.batch_size_per_gpu, 4)
             eval_batch_size = min(batch_size * 2, 8)
