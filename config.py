@@ -307,6 +307,73 @@ class TrainConfigSFTFast:
     max_seq_len: int = 512                       # 序列长度512
 
 
+# ===================================================================================
+# 以下为大数据集预训练配置 - 针对3×20G显存GPU + 12G内存优化
+@dataclass
+class TrainConfigPretrainLarge:
+    """
+    大数据集预训练配置 - 适用于3×20G显存GPU + 12G内存环境
+    
+    推荐数据量：
+    - 训练集：1000万样本
+    - 验证集：10万样本
+    
+    优化策略：
+    1. 充分利用GPU显存：batch_size=32（每张卡）
+    2. 减少梯度累积：gradient_accumulation_steps=2（降低内存占用）
+    3. 实际有效batch_size = 32 * 3(GPU) * 2 = 192（大batch提升训练稳定性）
+    4. 使用ultra_low_mem模式：避免PyArrow缓存累积
+    5. 禁用num_workers：避免多进程内存开销
+    6. 减小dataloader_buffer_size：降低内存占用
+    7. 缩短序列长度：max_seq_len=192（预训练阶段足够）
+    
+    预期内存占用：8-10GB（3 GPU）
+    预期GPU显存占用：16-18GB/GPU
+    预期训练速度：约52k steps/epoch（1000万数据）
+    """
+    epochs: int = 3                              # 大数据集3个epoch足够
+    batch_size_per_gpu: int = 32                 # 🚀 充分利用20G显存
+    
+    learn_rate: float = 0.0001                   # 标准学习率
+    div_factor: int = 50                         # 标准div_factor
+
+    mixed_precision: str = "bf16"                # 混合精度训练
+
+    # 减少梯度累积，降低内存占用
+    # 实际有效batch_size = 32 * 3(GPU) * 2 = 192
+    gradient_accumulation_steps: int = 2         # 🚀 降低到2，减少内存占用
+
+    warmup_steps: int = 1024                     # 标准warmup步数
+    
+    max_grad_norm: float = 1.0                   # 梯度裁剪
+
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
+    model_file: str = PROJECT_ROOT + '/model_save/pretrain_large/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/pretrain_large/model_config.json'
+    
+    # 大数据集文件路径（需要自己准备）
+    train_file: str = PROJECT_ROOT + '/data/my_train_dataset.parquet'      # 1000万训练数据
+    validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset.parquet'  # 10万验证数据
+    test_file: str = PROJECT_ROOT + '/data/my_test_dataset.parquet'
+
+    # 预训练不需要加载checkpoint
+    finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
+
+    # 训练状态保存
+    train_state_dir: str = PROJECT_ROOT + '/model_save/pretrain_large/train_latest_state'
+    output_dir: str = PROJECT_ROOT + '/model_save/pretrain_large'
+
+    # 1000万样本，batch_size=32*3*2=192，每个epoch约52k步
+    logging_steps: int = 100                     # 每100步记录一次（每个epoch约520次日志）
+    save_steps: int = 5000                       # 每5000步保存一次（每个epoch约10次）
+    
+    keep_latest_n_ckp: int = 5                   # 只保留5个最好的模型（节省磁盘空间）
+
+    seed: int = 23333
+    dataloader_buffer_size: int = 5000           # 🚀 减小buffer，降低内存占用
+    max_seq_len: int = 192                       # 🚀 缩短序列长度，预训练阶段192足够
+
+
 #======================================================================================
 # 以下为模型的配置
 @dataclass

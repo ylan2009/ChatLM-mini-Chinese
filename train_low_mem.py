@@ -7,12 +7,16 @@
     # 预训练（使用默认配置）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train
     
+    # 大数据集预训练（使用TrainConfigPretrainLarge配置 - 1000万数据，3×20G显存GPU）
+    accelerate launch --multi_gpu --num_processes 3 ./train_low_mem.py train --use_large_config=True
+    
     # SFT微调（使用TrainConfigSFT配置）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True
     
     # SFT微调（使用TrainConfigSFTSmall配置 - 小数据集）
     accelerate launch --multi_gpu --num_processes 2 ./train_low_mem.py train --is_finetune=True --use_small_config=True
 
+    # SFT微调（使用TrainConfigSFTFast配置 - 高性能）
     accelerate launch --multi_gpu --num_processes 3 ./train_low_mem.py train --is_finetune=True --use_fast_config=True
     
     # 预训练（自定义学习率和训练轮数）
@@ -29,6 +33,7 @@
     --is_keep_training: 是否从断点处加载状态继续训练（默认: False）
     --is_finetune: 是否微调，微调会冻结encoder和embedding（默认: False）
     --use_small_config: 是否使用TrainConfigSFTSmall配置（小数据集配置）（默认: False）
+    --use_large_config: 是否使用TrainConfigPretrainLarge配置（大数据集预训练，1000万数据）（默认: False）
     --epochs: 训练轮数，如果指定则覆盖TrainConfig中的默认值（默认: 8）
     --learn_rate: 学习率，如果指定则覆盖TrainConfig中的默认值（默认: 0.0001）
                   注意：SFT微调时建议使用更小的学习率，如 1e-5
@@ -44,8 +49,10 @@
 
 配置说明：
     - TrainConfig: 预训练配置
+    - TrainConfigPretrainLarge: 大数据集预训练配置（1000万数据，3×20G显存GPU）
     - TrainConfigSFT: SFT微调配置（标准数据集）
     - TrainConfigSFTSmall: SFT微调配置（小数据集，适合16G内存）
+    - TrainConfigSFTFast: SFT微调配置（高性能，充分利用GPU显存）
 """
 
 # ============================================================================
@@ -79,7 +86,7 @@ print("=" * 80)
 
 import fire
 
-from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, TrainConfigSFTFast, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTSmall, TrainConfigSFTFast, TrainConfigPretrainLarge, T5ModelConfig
 from model.trainer_low_mem import ChatTrainerLowMem
 
 
@@ -89,7 +96,7 @@ class TrainWrapper:
     def __init__(self):
         self.model_config = T5ModelConfig()
     
-    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_small_config: bool = False, use_fast_config: bool = False, **kwargs):
+    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_small_config: bool = False, use_fast_config: bool = False, use_large_config: bool = False, **kwargs):
         """
         训练函数
         
@@ -98,10 +105,17 @@ class TrainWrapper:
             is_finetune: 是否进行SFT微调
             use_small_config: 是否使用小数据集配置（TrainConfigSFTSmall - 低内存）
             use_fast_config: 是否使用高性能配置（TrainConfigSFTFast - 充分利用GPU显存）
+            use_large_config: 是否使用大数据集预训练配置（TrainConfigPretrainLarge - 1000万数据）
             **kwargs: 其他参数（如epochs, learn_rate等）
         """
         # 根据参数选择配置
-        if use_fast_config:
+        if use_large_config:
+            # 使用大数据集预训练配置
+            print("=" * 80)
+            print("使用 TrainConfigPretrainLarge 配置（大数据集预训练 - 1000万数据）")
+            print("=" * 80)
+            train_config = TrainConfigPretrainLarge()
+        elif use_fast_config:
             # 使用高性能配置
             print("=" * 80)
             print("使用 TrainConfigSFTFast 配置（高性能 - 充分利用GPU显存）")
