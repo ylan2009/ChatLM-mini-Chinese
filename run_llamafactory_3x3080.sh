@@ -153,8 +153,8 @@ export NCCL_SHM_DISABLE=0  # 启用共享内存（3080显存足够）
 export NCCL_TIMEOUT=3600   # 1小时超时
 export NCCL_IB_DISABLE=1   # 禁用InfiniBand（如果没有IB网络）
 
-# PyTorch 内存优化
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128  # 减少显存碎片
+# PyTorch 内存优化（使用新的环境变量名）
+export PYTORCH_ALLOC_CONF=max_split_size_mb:128  # 减少显存碎片
 
 # Python 内存优化
 export PYTHONUNBUFFERED=1  # 禁用Python缓冲
@@ -219,6 +219,7 @@ case $choice in
             accelerate config
         fi
         
+        # accelerate 支持 -m 参数
         accelerate launch \
             --multi_gpu \
             --num_processes=$NUM_GPUS \
@@ -239,10 +240,25 @@ case $choice in
             exit 1
         fi
         
-        deepspeed \
-            --num_gpus=$NUM_GPUS \
-            --master_port=29500 \
-            -m llmtuner.cli train "$CONFIG_FILE"
+        # 找到 llmtuner 的 cli.py 路径
+        LLMTUNER_CLI=$(python -c "import llmtuner; import os; print(os.path.join(os.path.dirname(llmtuner.__file__), 'cli.py'))")
+        
+        if [ ! -f "$LLMTUNER_CLI" ]; then
+            echo "❌ 错误: 找不到 llmtuner/cli.py"
+            echo "   尝试使用 llamafactory-cli 命令..."
+            
+            # 方案B: 使用 llamafactory-cli（它内部会处理 deepspeed）
+            llamafactory-cli train "$CONFIG_FILE"
+        else
+            echo "使用 DeepSpeed 启动训练..."
+            echo "  脚本路径: $LLMTUNER_CLI"
+            echo ""
+            
+            deepspeed \
+                --num_gpus=$NUM_GPUS \
+                --master_port=29500 \
+                "$LLMTUNER_CLI" train "$CONFIG_FILE"
+        fi
         ;;
     
     4)
@@ -252,10 +268,24 @@ case $choice in
         echo "=========================================="
         echo ""
         
-        torchrun \
-            --nproc_per_node=$NUM_GPUS \
-            --master_port=29500 \
-            -m llmtuner.cli train "$CONFIG_FILE"
+        # 找到 llmtuner 的 cli.py 路径
+        LLMTUNER_CLI=$(python -c "import llmtuner; import os; print(os.path.join(os.path.dirname(llmtuner.__file__), 'cli.py'))")
+        
+        if [ ! -f "$LLMTUNER_CLI" ]; then
+            echo "❌ 错误: 找不到 llmtuner/cli.py"
+            echo "   尝试使用 llamafactory-cli 命令..."
+            
+            llamafactory-cli train "$CONFIG_FILE"
+        else
+            echo "使用 torchrun 启动训练..."
+            echo "  脚本路径: $LLMTUNER_CLI"
+            echo ""
+            
+            torchrun \
+                --nproc_per_node=$NUM_GPUS \
+                --master_port=29500 \
+                "$LLMTUNER_CLI" train "$CONFIG_FILE"
+        fi
         ;;
     
     *)
