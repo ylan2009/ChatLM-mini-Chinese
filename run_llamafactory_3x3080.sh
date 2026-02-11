@@ -25,96 +25,96 @@ GPU_IDS="0,1,2"
 # ============================================================================
 # 检查依赖
 # ============================================================================
-echo "检查依赖..."
+# echo "检查依赖..."
 
-# 检查 transformers 版本
-echo "检查 transformers 版本..."
-TRANSFORMERS_VERSION=$(python -c "import transformers; print(transformers.__version__)" 2>/dev/null || echo "0.0.0")
-REQUIRED_MIN_VERSION="4.37.0"
-REQUIRED_MAX_VERSION="5.0.0"
+# # 检查 transformers 版本
+# echo "检查 transformers 版本..."
+# TRANSFORMERS_VERSION=$(python -c "import transformers; print(transformers.__version__)" 2>/dev/null || echo "0.0.0")
+# REQUIRED_MIN_VERSION="4.37.0"
+# REQUIRED_MAX_VERSION="5.0.0"
 
-# 检查版本范围
-if ! python -c "
-from packaging import version
-import transformers
-v = transformers.__version__
-min_ok = version.parse(v) >= version.parse('$REQUIRED_MIN_VERSION')
-max_ok = version.parse(v) < version.parse('$REQUIRED_MAX_VERSION')
-exit(0 if (min_ok and max_ok) else 1)
-" 2>/dev/null; then
-    echo "❌ 错误: transformers 版本不兼容"
-    echo "   当前版本: $TRANSFORMERS_VERSION"
-    echo "   需要版本: >= $REQUIRED_MIN_VERSION 且 < $REQUIRED_MAX_VERSION"
-    echo ""
-    echo "修复方法:"
-    echo "  pip uninstall transformers -y"
-    echo "  pip install transformers==4.44.0"
-    echo ""
-    echo "详细说明请查看: FIX_TRANSFORMERS_5X.md"
-    exit 1
-fi
-echo "✓ transformers 版本: $TRANSFORMERS_VERSION"
+# # 检查版本范围
+# if ! python -c "
+# from packaging import version
+# import transformers
+# v = transformers.__version__
+# min_ok = version.parse(v) >= version.parse('$REQUIRED_MIN_VERSION')
+# max_ok = version.parse(v) < version.parse('$REQUIRED_MAX_VERSION')
+# exit(0 if (min_ok and max_ok) else 1)
+# " 2>/dev/null; then
+#     echo "❌ 错误: transformers 版本不兼容"
+#     echo "   当前版本: $TRANSFORMERS_VERSION"
+#     echo "   需要版本: >= $REQUIRED_MIN_VERSION 且 < $REQUIRED_MAX_VERSION"
+#     echo ""
+#     echo "修复方法:"
+#     echo "  pip uninstall transformers -y"
+#     echo "  pip install transformers==4.44.0"
+#     echo ""
+#     echo "详细说明请查看: FIX_TRANSFORMERS_5X.md"
+#     exit 1
+# fi
+# echo "✓ transformers 版本: $TRANSFORMERS_VERSION"
 
-# 检查 trl 版本（如果安装了）
-if python -c "import trl" 2>/dev/null; then
-    TRL_VERSION=$(python -c "import trl; print(trl.__version__)" 2>/dev/null || echo "unknown")
-    echo "检查 trl 版本..."
+# # 检查 trl 版本（如果安装了）
+# if python -c "import trl" 2>/dev/null; then
+#     TRL_VERSION=$(python -c "import trl; print(trl.__version__)" 2>/dev/null || echo "unknown")
+#     echo "检查 trl 版本..."
     
-    # trl 版本应该 < 0.9.0（避免与 transformers 冲突）
-    if ! python -c "
-from packaging import version
-import trl
-v = trl.__version__
-exit(0 if version.parse(v) < version.parse('0.9.0') else 1)
-" 2>/dev/null; then
-        echo "⚠️  警告: trl 版本可能不兼容"
-        echo "   当前版本: $TRL_VERSION"
-        echo "   推荐版本: < 0.9.0"
-        echo ""
-        echo "修复方法:"
-        echo "  pip uninstall trl -y"
-        echo "  pip install trl==0.8.6"
-        echo ""
-        echo "详细说明请查看: FIX_TRL_CONFLICT.md"
-        echo ""
-        read -p "是否继续? [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    else
-        echo "✓ trl 版本: $TRL_VERSION"
-    fi
-fi
+#     # trl 版本应该 < 0.9.0（避免与 transformers 冲突）
+#     if ! python -c "
+# from packaging import version
+# import trl
+# v = trl.__version__
+# exit(0 if version.parse(v) < version.parse('0.9.0') else 1)
+# " 2>/dev/null; then
+#         echo "⚠️  警告: trl 版本可能不兼容"
+#         echo "   当前版本: $TRL_VERSION"
+#         echo "   推荐版本: < 0.9.0"
+#         echo ""
+#         echo "修复方法:"
+#         echo "  pip uninstall trl -y"
+#         echo "  pip install trl==0.8.6"
+#         echo ""
+#         echo "详细说明请查看: FIX_TRL_CONFLICT.md"
+#         echo ""
+#         read -p "是否继续? [y/N] " -n 1 -r
+#         echo
+#         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#             exit 1
+#         fi
+#     else
+#         echo "✓ trl 版本: $TRL_VERSION"
+#     fi
+# fi
 
-# 检查 LLaMA-Factory 是否安装
-if ! python -c "import llmtuner" 2>/dev/null; then
-    echo "❌ 错误: 未安装 LLaMA-Factory"
-    echo ""
-    echo "请运行以下命令安装:"
-    echo "  pip install llmtuner"
-    echo ""
-    echo "或者从源码安装:"
-    echo "  git clone https://github.com/hiyouga/LLaMA-Factory.git"
-    echo "  cd LLaMA-Factory"
-    echo "  pip install -e ."
-    exit 1
-fi
+# # 检查 LLaMA-Factory 是否安装
+# if ! python -c "import llmtuner" 2>/dev/null; then
+#     echo "❌ 错误: 未安装 LLaMA-Factory"
+#     echo ""
+#     echo "请运行以下命令安装:"
+#     echo "  pip install llmtuner"
+#     echo ""
+#     echo "或者从源码安装:"
+#     echo "  git clone https://github.com/hiyouga/LLaMA-Factory.git"
+#     echo "  cd LLaMA-Factory"
+#     echo "  pip install -e ."
+#     exit 1
+# fi
 
-# 检查 DeepSpeed 是否安装
-if ! python -c "import deepspeed" 2>/dev/null; then
-    echo "⚠️  警告: 未安装 DeepSpeed"
-    echo "   DeepSpeed 可以进一步优化显存使用"
-    echo "   安装命令: pip install deepspeed"
-    echo ""
-    read -p "是否继续（不使用DeepSpeed）? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
-    # 禁用 DeepSpeed
-    sed -i.bak 's/deepspeed: ds_config_zero2.json/deepspeed: null/' "$CONFIG_FILE"
-fi
+# # 检查 DeepSpeed 是否安装
+# if ! python -c "import deepspeed" 2>/dev/null; then
+#     echo "⚠️  警告: 未安装 DeepSpeed"
+#     echo "   DeepSpeed 可以进一步优化显存使用"
+#     echo "   安装命令: pip install deepspeed"
+#     echo ""
+#     read -p "是否继续（不使用DeepSpeed）? [y/N] " -n 1 -r
+#     echo
+#     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+#         exit 1
+#     fi
+#     # 禁用 DeepSpeed
+#     sed -i.bak 's/deepspeed: ds_config_zero2.json/deepspeed: null/' "$CONFIG_FILE"
+# fi
 
 # 检查配置文件
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -240,25 +240,30 @@ case $choice in
             exit 1
         fi
         
-        # 找到 llmtuner 的 cli.py 路径
-        LLMTUNER_CLI=$(python -c "import llmtuner; import os; print(os.path.join(os.path.dirname(llmtuner.__file__), 'cli.py'))")
+        # 创建临时启动脚本（解决相对导入问题）
+        cat > /tmp/deepspeed_train.py << 'EOF'
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+DeepSpeed 训练启动脚本
+解决直接运行 cli.py 时的相对导入问题
+"""
+import sys
+from llmtuner.cli import main
+
+if __name__ == "__main__":
+    main()
+EOF
         
-        if [ ! -f "$LLMTUNER_CLI" ]; then
-            echo "❌ 错误: 找不到 llmtuner/cli.py"
-            echo "   尝试使用 llamafactory-cli 命令..."
-            
-            # 方案B: 使用 llamafactory-cli（它内部会处理 deepspeed）
-            llamafactory-cli train "$CONFIG_FILE"
-        else
-            echo "使用 DeepSpeed 启动训练..."
-            echo "  脚本路径: $LLMTUNER_CLI"
-            echo ""
-            
-            deepspeed \
-                --num_gpus=$NUM_GPUS \
-                --master_port=29500 \
-                "$LLMTUNER_CLI" train "$CONFIG_FILE"
-        fi
+        echo "使用 DeepSpeed 启动训练..."
+        echo "  配置文件: $CONFIG_FILE"
+        echo "  GPU数量: $NUM_GPUS"
+        echo ""
+        
+        deepspeed \
+            --num_gpus=$NUM_GPUS \
+            --master_port=29500 \
+            /tmp/deepspeed_train.py train "$CONFIG_FILE"
         ;;
     
     4)
@@ -268,24 +273,30 @@ case $choice in
         echo "=========================================="
         echo ""
         
-        # 找到 llmtuner 的 cli.py 路径
-        LLMTUNER_CLI=$(python -c "import llmtuner; import os; print(os.path.join(os.path.dirname(llmtuner.__file__), 'cli.py'))")
+        # 创建临时启动脚本（解决相对导入问题）
+        cat > /tmp/torchrun_train.py << 'EOF'
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Torchrun 训练启动脚本
+解决直接运行 cli.py 时的相对导入问题
+"""
+import sys
+from llmtuner.cli import main
+
+if __name__ == "__main__":
+    main()
+EOF
         
-        if [ ! -f "$LLMTUNER_CLI" ]; then
-            echo "❌ 错误: 找不到 llmtuner/cli.py"
-            echo "   尝试使用 llamafactory-cli 命令..."
-            
-            llamafactory-cli train "$CONFIG_FILE"
-        else
-            echo "使用 torchrun 启动训练..."
-            echo "  脚本路径: $LLMTUNER_CLI"
-            echo ""
-            
-            torchrun \
-                --nproc_per_node=$NUM_GPUS \
-                --master_port=29500 \
-                "$LLMTUNER_CLI" train "$CONFIG_FILE"
-        fi
+        echo "使用 torchrun 启动训练..."
+        echo "  配置文件: $CONFIG_FILE"
+        echo "  GPU数量: $NUM_GPUS"
+        echo ""
+        
+        torchrun \
+            --nproc_per_node=$NUM_GPUS \
+            --master_port=29500 \
+            /tmp/torchrun_train.py train "$CONFIG_FILE"
         ;;
     
     *)
