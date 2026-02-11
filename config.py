@@ -110,8 +110,10 @@ class TrainConfig:
     tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'  # tokenizer一般和model权重放在同一个文件夹
     model_file: str = PROJECT_ROOT + '/model_save/chat_small_t5.{}.bin'
     model_config_file: str = PROJECT_ROOT + '/model_save/model_config.json'
-    train_file: str = PROJECT_ROOT + '/data/my_train_dataset.parquet'
-    validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset.parquet'
+    # train_file: str = PROJECT_ROOT + '/data/my_train_dataset.parquet'
+    train_file: str = PROJECT_ROOT + '/data/my_train_dataset_3m.parquet'
+    # validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset.parquet'
+    validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset_300k.parquet'
     test_file: str = PROJECT_ROOT + '/data/my_test_dataset.parquet'
 
     # 从哪个模型开始微调，仅当traing 函数 is_finetune = True时生效
