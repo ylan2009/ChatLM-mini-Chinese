@@ -94,10 +94,10 @@ class SFTconfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfig:
-    epochs: int = 5                                 # 增加到5个epoch，让模型充分学习
+    epochs: int = 3                                 # 增加到5个epoch，让模型充分学习
     batch_size_per_gpu: int = 24                    # 🚀 从32降到24，避免GPU显存溢出（OOM）
     
-    learn_rate: float = 0.0001                      # 最大 div_factor * learn_rate
+    learn_rate: float = 0.00015                     # 最大 div_factor * learn_rate
     div_factor: int = 50
 
     mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
@@ -134,7 +134,7 @@ class TrainConfig:
 
     seed: int = 23333
     dataloader_buffer_size: int = 50000
-    max_seq_len: int = 256                      # 最大句子长度，默认：256
+    max_seq_len: int = 192                      # 最大句子长度，默认：256
 
 
 

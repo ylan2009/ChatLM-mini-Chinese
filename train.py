@@ -19,6 +19,8 @@
     # 从断点继续训练
     accelerate launch --multi_gpu --num_processes 2 ./train.py train --is_keep_training=True
 
+    accelerate launch --multi_gpu --num_processes 3 ./train.py train --is_keep_training=True
+
 参数说明：
     train: 执行训练函数
     --is_keep_training: 是否从断点处加载状态继续训练（默认: False）
