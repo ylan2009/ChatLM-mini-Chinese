@@ -240,15 +240,35 @@ case $choice in
             exit 1
         fi
         
-        # 创建临时启动脚本（解决相对导入问题）
+        # 创建临时启动脚本（解决相对导入问题和参数解析问题）
         cat > /tmp/deepspeed_train.py << 'EOF'
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 DeepSpeed 训练启动脚本
-解决直接运行 cli.py 时的相对导入问题
+解决直接运行 cli.py 时的相对导入问题和 --local_rank 参数解析问题
 """
 import sys
+import os
+
+# 过滤掉 DeepSpeed 自动添加的 --local_rank 参数
+# 因为 llmtuner.cli.main() 不需要这个参数（它会从环境变量读取）
+filtered_args = []
+skip_next = False
+for i, arg in enumerate(sys.argv[1:], 1):
+    if skip_next:
+        skip_next = False
+        continue
+    if arg.startswith('--local_rank'):
+        if '=' not in arg and i < len(sys.argv) - 1:
+            skip_next = True  # 跳过下一个参数（值）
+        continue  # 跳过 --local_rank
+    filtered_args.append(arg)
+
+# 替换 sys.argv
+sys.argv = [sys.argv[0]] + filtered_args
+
+# 导入并运行
 from llmtuner.cli import main
 
 if __name__ == "__main__":
@@ -273,15 +293,35 @@ EOF
         echo "=========================================="
         echo ""
         
-        # 创建临时启动脚本（解决相对导入问题）
+        # 创建临时启动脚本（解决相对导入问题和参数解析问题）
         cat > /tmp/torchrun_train.py << 'EOF'
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Torchrun 训练启动脚本
-解决直接运行 cli.py 时的相对导入问题
+解决直接运行 cli.py 时的相对导入问题和 --local_rank 参数解析问题
 """
 import sys
+import os
+
+# 过滤掉 torchrun 自动添加的 --local_rank 参数
+# 因为 llmtuner.cli.main() 不需要这个参数（它会从环境变量读取）
+filtered_args = []
+skip_next = False
+for i, arg in enumerate(sys.argv[1:], 1):
+    if skip_next:
+        skip_next = False
+        continue
+    if arg.startswith('--local_rank'):
+        if '=' not in arg and i < len(sys.argv) - 1:
+            skip_next = True  # 跳过下一个参数（值）
+        continue  # 跳过 --local_rank
+    filtered_args.append(arg)
+
+# 替换 sys.argv
+sys.argv = [sys.argv[0]] + filtered_args
+
+# 导入并运行
 from llmtuner.cli import main
 
 if __name__ == "__main__":
