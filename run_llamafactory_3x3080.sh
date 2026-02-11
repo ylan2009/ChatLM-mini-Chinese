@@ -27,6 +27,66 @@ GPU_IDS="0,1,2"
 # ============================================================================
 echo "检查依赖..."
 
+# 检查 transformers 版本
+echo "检查 transformers 版本..."
+TRANSFORMERS_VERSION=$(python -c "import transformers; print(transformers.__version__)" 2>/dev/null || echo "0.0.0")
+REQUIRED_MIN_VERSION="4.37.0"
+REQUIRED_MAX_VERSION="5.0.0"
+
+# 检查版本范围
+if ! python -c "
+from packaging import version
+import transformers
+v = transformers.__version__
+min_ok = version.parse(v) >= version.parse('$REQUIRED_MIN_VERSION')
+max_ok = version.parse(v) < version.parse('$REQUIRED_MAX_VERSION')
+exit(0 if (min_ok and max_ok) else 1)
+" 2>/dev/null; then
+    echo "❌ 错误: transformers 版本不兼容"
+    echo "   当前版本: $TRANSFORMERS_VERSION"
+    echo "   需要版本: >= $REQUIRED_MIN_VERSION 且 < $REQUIRED_MAX_VERSION"
+    echo ""
+    echo "修复方法:"
+    echo "  pip uninstall transformers -y"
+    echo "  pip install transformers==4.44.0"
+    echo ""
+    echo "详细说明请查看: FIX_TRANSFORMERS_5X.md"
+    exit 1
+fi
+echo "✓ transformers 版本: $TRANSFORMERS_VERSION"
+
+# 检查 trl 版本（如果安装了）
+if python -c "import trl" 2>/dev/null; then
+    TRL_VERSION=$(python -c "import trl; print(trl.__version__)" 2>/dev/null || echo "unknown")
+    echo "检查 trl 版本..."
+    
+    # trl 版本应该 < 0.9.0（避免与 transformers 冲突）
+    if ! python -c "
+from packaging import version
+import trl
+v = trl.__version__
+exit(0 if version.parse(v) < version.parse('0.9.0') else 1)
+" 2>/dev/null; then
+        echo "⚠️  警告: trl 版本可能不兼容"
+        echo "   当前版本: $TRL_VERSION"
+        echo "   推荐版本: < 0.9.0"
+        echo ""
+        echo "修复方法:"
+        echo "  pip uninstall trl -y"
+        echo "  pip install trl==0.8.6"
+        echo ""
+        echo "详细说明请查看: FIX_TRL_CONFLICT.md"
+        echo ""
+        read -p "是否继续? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        echo "✓ trl 版本: $TRL_VERSION"
+    fi
+fi
+
 # 检查 LLaMA-Factory 是否安装
 if ! python -c "import llmtuner" 2>/dev/null; then
     echo "❌ 错误: 未安装 LLaMA-Factory"
