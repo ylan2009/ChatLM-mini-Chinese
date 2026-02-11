@@ -3,8 +3,8 @@
     "file_name": "data/my_train_dataset.parquet",
     "file_format": "parquet",
     "columns": {
-      "prompt": "input",
-      "response": "target"
+      "prompt": "prompt",
+      "response": "response"
     }
   }
 }
