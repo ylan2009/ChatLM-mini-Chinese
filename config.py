@@ -95,7 +95,7 @@ class SFTconfig:
 @dataclass
 class TrainConfig:
     epochs: int = 3                                 # 增加到5个epoch，让模型充分学习
-    batch_size_per_gpu: int = 24                    # 🚀 从32降到24，避免GPU显存溢出（OOM）
+    batch_size_per_gpu: int = 32                    # 🚀 从24提升到32，充分利用GPU显存（GPU显存使用率57-67%，还有空间）
     
     learn_rate: float = 0.00015                     # 最大 div_factor * learn_rate
     div_factor: int = 50
@@ -103,7 +103,7 @@ class TrainConfig:
     mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
 
     # 注意：计算梯度时相当于batch_size * gradient_accumulation_steps，说人话就是梯度累积步数>1时，等于增大n倍的batch_size
-    gradient_accumulation_steps: int = 2            # 🚀 从8降到2，减少内存占用（实际有效batch=24*3*2=144）
+    gradient_accumulation_steps: int = 2            # 保持不变（实际有效batch=32*3*2=192）
 
     warmup_steps: int = 1024                        # 模型参数预热步数，预热样本数=warmup_steps * batch_size * gradient_accumulation_steps
 
@@ -133,8 +133,8 @@ class TrainConfig:
     keep_latest_n_ckp: int = 8                  # 训练过程中，最多保留多少个分数最好的模型文件
 
     seed: int = 23333
-    dataloader_buffer_size: int = 50000
-    max_seq_len: int = 192                      # 最大句子长度，默认：256
+    dataloader_buffer_size: int = 10000         # 🚀 从50000降到10000，减少内存占用，加速数据加载
+    max_seq_len: int = 192                      # 🚀 保持192，预训练阶段足够（从256降低）
 
 
 
