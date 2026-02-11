@@ -95,7 +95,7 @@ class SFTconfig:
 @dataclass
 class TrainConfig:
     epochs: int = 5                                 # 增加到5个epoch，让模型充分学习
-    batch_size_per_gpu: int = 16
+    batch_size_per_gpu: int = 32                    # 🚀 从16增加到32，充分利用GPU显存（20GB）
     
     learn_rate: float = 0.0001                      # 最大 div_factor * learn_rate
     div_factor: int = 50
@@ -103,7 +103,7 @@ class TrainConfig:
     mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
 
     # 注意：计算梯度时相当于batch_size * gradient_accumulation_steps，说人话就是梯度累积步数>1时，等于增大n倍的batch_size
-    gradient_accumulation_steps: int = 8           # 累积梯度更新步数
+    gradient_accumulation_steps: int = 2            # 🚀 从8降到2，减少内存占用（实际有效batch=32*3*2=192）
 
     warmup_steps: int = 1024                        # 模型参数预热步数，预热样本数=warmup_steps * batch_size * gradient_accumulation_steps
 
