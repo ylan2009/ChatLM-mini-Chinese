@@ -8,6 +8,7 @@ finetuning_type: full  # full=全量微调, lora=LoRA微调, freeze=部分冻结
 
 # ========== 数据配置 ==========
 dataset: custom_t5_dataset
+dataset_dir: .  # dataset_info.json 在当前目录
 template: default
 cutoff_len: 512  # 最大序列长度
 preprocessing_num_workers: 2  # 降低内存占用（12GB内存建议用2）
