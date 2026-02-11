@@ -149,9 +149,11 @@ echo "设置环境变量..."
 export CUDA_VISIBLE_DEVICES=$GPU_IDS
 
 # NCCL 配置（解决共享内存问题）
-export NCCL_SHM_DISABLE=0  # 启用共享内存（3080显存足够）
+export NCCL_SHM_DISABLE=1  # 禁用共享内存（避免 /dev/shm 错误）
+export NCCL_P2P_DISABLE=0  # 启用 P2P 通信（GPU间直接通信）
 export NCCL_TIMEOUT=3600   # 1小时超时
 export NCCL_IB_DISABLE=1   # 禁用InfiniBand（如果没有IB网络）
+export NCCL_DEBUG=INFO     # 启用调试信息（可选，用于诊断）
 
 # PyTorch 内存优化（使用新的环境变量名）
 export PYTORCH_ALLOC_CONF=max_split_size_mb:128  # 减少显存碎片
