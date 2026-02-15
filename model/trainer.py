@@ -269,8 +269,9 @@ class ChatTrainer:
         if not self.is_win_platform:
             cpu_cnt = cpu_count(logical=False)
             gpu_cnt = torch.cuda.device_count()
-            # 每个GPU分配2个worker，避免内存占用过高
-            num_workers = min(4, int(2 * gpu_cnt)) if gpu_cnt > 0 else 2
+            # 限制worker数量，每个worker会复制数据集到独立内存空间
+            # 32GB内存+3GPU场景下，num_workers过多会导致OOM和Swap抖动
+            num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
 
         train_dataset = MyDataset(
             parquet_file=train_config.train_file,
