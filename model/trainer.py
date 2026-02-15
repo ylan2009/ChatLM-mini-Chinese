@@ -15,8 +15,9 @@ from transformers import PreTrainedTokenizerFast
 from torch_optimizer import Adafactor
 
 # import accelerate
+import datetime
 from accelerate import Accelerator
-from accelerate.utils import set_seed
+from accelerate.utils import set_seed, InitProcessGroupKwargs
 
 # import 自定义类和函数
 from model.chat_model import TextToTextModel
@@ -218,10 +219,14 @@ class ChatTrainer:
 
         set_seed(train_config.seed)
 
+        # Increase NCCL timeout to 1 hour to prevent evaluate phase timeout
+        nccl_timeout_kwargs = InitProcessGroupKwargs(timeout=datetime.timedelta(seconds=3600))
+
         accelerator = Accelerator(
             mixed_precision=train_config.mixed_precision,       # 混合精度
             gradient_accumulation_steps=accumulation_steps,     # 梯度累积
             project_dir=train_config.train_state_dir,
+            kwargs_handlers=[nccl_timeout_kwargs],
         )
 
         # 根据剩余内存大小决定是否完全加载数据集到内存中
@@ -281,8 +286,10 @@ class ChatTrainer:
         )
 
         batch_size = train_config.batch_size_per_gpu
-        # 评估时不需要梯度，可以使用更大的batch size（2-3倍）来提高GPU利用率
-        eval_batch_size = batch_size * 3  # 评估batch size是训练的3倍
+        # NOTE: evaluate uses model.generate() (autoregressive decoding) which is
+        # much slower than a forward pass. Keep eval_batch_size = batch_size to
+        # avoid NCCL timeout during the evaluate phase.
+        eval_batch_size = batch_size
 
         train_dataloader = DataLoader(
             train_dataset, 
@@ -547,10 +554,9 @@ class ChatTrainer:
             self.progress.reset(self.eval_progress)
             self.progress.update(self.eval_progress, visible=True)
 
-        # 评估更多步数以获得更准确的BLEU分数
-        # 如果验证集较小，评估全部；如果较大，至少评估200步
-        # max_eval_steps = min(eval_steps, max(200, eval_steps))
-        max_eval_steps = eval_steps
+        # Cap max eval steps to avoid NCCL timeout during long generate() loops.
+        # 30 steps is enough to get a reasonable BLEU estimate.
+        max_eval_steps = min(eval_steps, 30)
 
         with torch.no_grad():
             for step, batch_data in enumerate(valid_dataloader):
