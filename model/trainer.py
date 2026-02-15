@@ -269,9 +269,8 @@ class ChatTrainer:
         if not self.is_win_platform:
             cpu_cnt = cpu_count(logical=False)
             gpu_cnt = torch.cuda.device_count()
-            # 限制worker数量，每个worker会复制数据集到独立内存空间
-            # 32GB内存+3GPU场景下，num_workers过多会导致OOM和Swap抖动
-            num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
+            # 每个GPU分配2个worker，避免内存占用过高
+            num_workers = min(4, int(2 * gpu_cnt)) if gpu_cnt > 0 else 2
 
         train_dataset = MyDataset(
             parquet_file=train_config.train_file,
@@ -324,10 +323,10 @@ class ChatTrainer:
 
         # Use torch.compile to speed up training (requires PyTorch 2.0+)
         # First compilation takes a few minutes, but subsequent steps are 10-30% faster.
-        if hasattr(torch, 'compile'):
-            if accelerator.is_main_process:
-                log.info('Applying torch.compile to model for faster training...', save_to_file=True)
-            model = torch.compile(model)
+        # if hasattr(torch, 'compile'):
+        #     if accelerator.is_main_process:
+        #         log.info('Applying torch.compile to model for faster training...', save_to_file=True)
+        #     model = torch.compile(model)
 
         # 微调加载的模型并冻结embedding和encoder
         if is_finetune:
