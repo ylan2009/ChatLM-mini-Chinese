@@ -235,8 +235,12 @@ class ChatTrainer:
 
         # 剩余内存≥48GB将把数据集留在内存中,因为2个显卡+全全部装载900多万的训练数据到内存需要大概43GB的CPU内存
         # 如果不放在内存中，将会使用迭代器生成数据，CPU 内存小于16GB也可以运行，但是不支持顺序打乱。
-        # 多GPU keep_in_memory必须=True，否则无法进行分布式训练
-        keep_in_memory = True if unuse_mem >= 48.0 or torch.cuda.device_count() >= 2 else False
+        # 注意：多GPU场景下每个DDP进程都会独立加载数据，N个进程 × 全量数据集 会导致内存暴涨
+        # 因此仅当可用内存充裕时才 keep_in_memory，不再因 GPU≥2 就强制加载
+        gpu_count = torch.cuda.device_count()
+        # 估算：每个进程加载全量数据约需 8-12GB，N个进程需要 N*10GB 左右
+        mem_needed_estimate = gpu_count * 10.0  # GB
+        keep_in_memory = True if unuse_mem >= max(48.0, mem_needed_estimate) else False
 
         if accelerator.is_main_process:
             log.info('cpu memory available: {:.2f} GB, disk space available: {:.2f} GB, keep dataset in memory: {}.'\
@@ -269,8 +273,12 @@ class ChatTrainer:
         if not self.is_win_platform:
             cpu_cnt = cpu_count(logical=False)
             gpu_cnt = torch.cuda.device_count()
-            # 每个GPU分配2个worker，避免内存占用过高
-            num_workers = min(4, int(2 * gpu_cnt)) if gpu_cnt > 0 else 2
+            # 内存紧张时减少worker数量：每个worker会fork进程，占用额外内存
+            # 3个DDP进程 × num_workers 个子进程 = 大量内存开销
+            if unuse_mem < 16.0:
+                num_workers = 0  # 内存极度紧张，禁用多进程加载
+            else:
+                num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
 
         train_dataset = MyDataset(
             parquet_file=train_config.train_file,
