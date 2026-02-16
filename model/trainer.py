@@ -436,7 +436,7 @@ class ChatTrainer:
             )
         
         if is_keep_training:
-            import glob, torch
+            import glob
             state_dir = train_config.train_state_dir
             moved = []
 
