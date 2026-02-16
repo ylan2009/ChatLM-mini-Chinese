@@ -354,7 +354,7 @@ class TrainConfigPretrainLarge:
     model_config_file: str = PROJECT_ROOT + '/model_save/pretrain_large/model_config.json'
     
     # 大数据集文件路径（需要自己准备）
-    train_file: str = PROJECT_ROOT + '/data/my_train_dataset.parquet'      # 1000万训练数据
+    train_file: str = PROJECT_ROOT + '/data/my_train_dataset_6m.parquet'      # 1000万训练数据
     validation_file: str = PROJECT_ROOT + '/data/my_valid_dataset.parquet'  # 10万验证数据
     test_file: str = PROJECT_ROOT + '/data/my_test_dataset.parquet'
 
