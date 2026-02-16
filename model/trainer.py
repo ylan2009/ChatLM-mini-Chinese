@@ -436,40 +436,55 @@ class ChatTrainer:
             )
         
         if is_keep_training:
-            try:
-                accelerator.load_state(input_dir=train_config.train_state_dir)
-            except (KeyError, RuntimeError) as e:
-                # lr_scheduler state_dict may be incompatible after switching
-                # scheduler type (e.g. from OneCycleLR to SequentialLR).
-                # Workaround: temporarily move scheduler state files out of the
-                # checkpoint directory so that load_state skips scheduler
-                # restoration, then move them back.
-                if accelerator.is_main_process:
+            import glob, torch
+            state_dir = train_config.train_state_dir
+            moved = []
+
+            # Pre-check scheduler compatibility on main process before any
+            # rank calls load_state, to avoid FileNotFoundError on other ranks.
+            if accelerator.is_main_process:
+                sched_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin'))
+                need_skip_scheduler = False
+                for f in sched_files:
+                    try:
+                        sd = torch.load(f, map_location='cpu')
+                        # SequentialLR expects '_schedulers' key; if missing
+                        # the checkpoint was saved with a different scheduler.
+                        if '_schedulers' not in sd:
+                            need_skip_scheduler = True
+                            break
+                    except Exception:
+                        need_skip_scheduler = True
+                        break
+
+                if need_skip_scheduler:
                     log.info(
-                        f'[WARN] load_state failed ({e}), '
-                        f'retrying without lr_scheduler state (scheduler will reset)...',
+                        '[WARN] Scheduler state incompatible with current SequentialLR, '
+                        'temporarily removing scheduler files (scheduler will reset)...',
                         save_to_file=True,
                     )
-                import glob
-                state_dir = train_config.train_state_dir
-                sched_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin'))
-                moved = []
-                for f in sched_files:
-                    bak = f + '.bak'
-                    try:
-                        os.rename(f, bak)
-                        moved.append((bak, f))
-                    except Exception:
-                        pass
-                try:
-                    accelerator.load_state(input_dir=state_dir)
-                finally:
-                    # Restore scheduler state files so the directory stays intact
+                    for f in sched_files:
+                        bak = f + '.bak'
+                        try:
+                            os.rename(f, bak)
+                            moved.append((bak, f))
+                        except Exception:
+                            pass
+
+            # Synchronise all ranks so that file renames are visible to everyone
+            accelerator.wait_for_everyone()
+
+            try:
+                accelerator.load_state(input_dir=state_dir)
+            finally:
+                # Restore scheduler state files on main process
+                if accelerator.is_main_process:
                     for bak, orig in moved:
                         try:
                             os.rename(bak, orig)
                         except Exception:
                             pass
+                accelerator.wait_for_everyone()
         
         self.model = model
         self.accelerator = accelerator
