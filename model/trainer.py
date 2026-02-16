@@ -436,7 +436,40 @@ class ChatTrainer:
             )
         
         if is_keep_training:
-            accelerator.load_state(input_dir=train_config.train_state_dir)
+            try:
+                accelerator.load_state(input_dir=train_config.train_state_dir)
+            except (KeyError, RuntimeError) as e:
+                # lr_scheduler state_dict may be incompatible after switching
+                # scheduler type (e.g. from OneCycleLR to SequentialLR).
+                # Workaround: temporarily move scheduler state files out of the
+                # checkpoint directory so that load_state skips scheduler
+                # restoration, then move them back.
+                if accelerator.is_main_process:
+                    log.info(
+                        f'[WARN] load_state failed ({e}), '
+                        f'retrying without lr_scheduler state (scheduler will reset)...',
+                        save_to_file=True,
+                    )
+                import glob
+                state_dir = train_config.train_state_dir
+                sched_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin'))
+                moved = []
+                for f in sched_files:
+                    bak = f + '.bak'
+                    try:
+                        os.rename(f, bak)
+                        moved.append((bak, f))
+                    except Exception:
+                        pass
+                try:
+                    accelerator.load_state(input_dir=state_dir)
+                finally:
+                    # Restore scheduler state files so the directory stays intact
+                    for bak, orig in moved:
+                        try:
+                            os.rename(bak, orig)
+                        except Exception:
+                            pass
         
         self.model = model
         self.accelerator = accelerator
