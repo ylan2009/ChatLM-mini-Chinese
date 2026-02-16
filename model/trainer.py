@@ -441,6 +441,21 @@ class ChatTrainer:
             moved = []
 
             if accelerator.is_main_process:
+                # Step 0: Move away custom_checkpoint files that are not registered
+                # Old training runs may have saved custom_checkpoint_*.pkl files,
+                # but current code does not register_for_checkpointing() anything.
+                # accelerate will raise RuntimeError if it finds custom checkpoints
+                # but no registered objects.
+                custom_ckpt_files = glob.glob(os.path.join(state_dir, 'custom_checkpoint_*.pkl'))
+                for f in custom_ckpt_files:
+                    bak = f + '.bak'
+                    try:
+                        os.rename(f, bak)
+                        moved.append((bak, f))
+                        log.info(f'[INFO] Moved away custom checkpoint: {f} -> {bak}', save_to_file=True)
+                    except Exception:
+                        pass
+
                 # Step 1: Restore any .bak leftovers from a previous failed run
                 bak_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin.bak'))
                 for bak in bak_files:
