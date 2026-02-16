@@ -398,14 +398,34 @@ class ChatTrainer:
                     .format(len(train_dataset), steps_per_epoch, len(valid_dataset), eval_steps, num_workers), save_to_file=True)
 
         
-        lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                optimizer=optimizer, 
-                max_lr=train_config.div_factor * train_config.learn_rate, 
-                epochs=train_config.epochs, 
-                steps_per_epoch=int(np.ceil( len(train_dataset) / (batch_size * accumulation_steps) )),  # 梯度累积相当于增大了batch_size
-                div_factor=train_config.div_factor,
-                cycle_momentum=False,
-            )
+        # CosineAnnealingWarmRestarts: restart learning rate every epoch
+        # so that the model can learn sufficiently in later epochs,
+        # unlike OneCycleLR which decays to ~0 in the second half.
+        steps_per_epoch_for_scheduler = int(np.ceil(len(train_dataset) / (batch_size * accumulation_steps)))
+        warmup_steps = min(getattr(train_config, 'warmup_steps', 1024), steps_per_epoch_for_scheduler // 2)
+
+        # Phase 1: Linear warmup from learn_rate / div_factor to learn_rate
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0 / train_config.div_factor,  # start at learn_rate / div_factor
+            end_factor=1.0,                               # ramp up to learn_rate
+            total_iters=warmup_steps,
+        )
+
+        # Phase 2: Cosine annealing with warm restarts (restart every epoch)
+        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=steps_per_epoch_for_scheduler,  # restart period = 1 epoch
+            T_mult=1,                           # keep the same period for each restart
+            eta_min=train_config.learn_rate / train_config.div_factor,  # min lr = initial lr
+        )
+
+        # Combine: warmup first, then cosine with warm restarts
+        lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_steps],
+        )
         
         model, optimizer, lr_scheduler, train_dataloader, valid_dataloader = accelerator.prepare(
                 model, 
