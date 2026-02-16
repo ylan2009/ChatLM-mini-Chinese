@@ -437,7 +437,6 @@ class ChatTrainer:
         
         if is_keep_training:
             accelerator.load_state(input_dir=train_config.train_state_dir)
-            accelerator.register_for_checkpointing(lr_scheduler)
         
         self.model = model
         self.accelerator = accelerator
