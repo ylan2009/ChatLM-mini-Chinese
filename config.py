@@ -124,7 +124,7 @@ class TrainConfig:
     train_state_dir: str = PROJECT_ROOT + '/model_save/train_latest_state'
     output_dir: str = PROJECT_ROOT + '/model_save/pretrain'
 
-    logging_steps: int = 50
+    logging_steps: int = 100                    # 🚀 从50提升到100，减少GPU→CPU同步频率
     save_steps: int = 5000
     
     # dataset_cache_dir: str = PROJECT_ROOT + '/data/.cache'
