@@ -440,29 +440,47 @@ class ChatTrainer:
             state_dir = train_config.train_state_dir
             moved = []
 
-            # Pre-check scheduler compatibility on main process before any
-            # rank calls load_state, to avoid FileNotFoundError on other ranks.
             if accelerator.is_main_process:
+                # Step 1: Restore any .bak leftovers from a previous failed run
+                bak_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin.bak'))
+                for bak in bak_files:
+                    orig = bak[:-4]  # remove '.bak' suffix
+                    if not os.path.exists(orig):
+                        try:
+                            os.rename(bak, orig)
+                            log.info(f'[INFO] Restored leftover backup: {bak} -> {orig}', save_to_file=True)
+                        except Exception:
+                            pass
+
+                # Step 2: Check if scheduler files exist and are compatible
                 sched_files = glob.glob(os.path.join(state_dir, 'scheduler*.bin'))
+                # Also check the expected default filename
+                default_sched = os.path.join(state_dir, 'scheduler.bin')
                 need_skip_scheduler = False
-                for f in sched_files:
-                    try:
-                        sd = torch.load(f, map_location='cpu')
-                        # SequentialLR expects '_schedulers' key; if missing
-                        # the checkpoint was saved with a different scheduler.
-                        if '_schedulers' not in sd:
+
+                if not sched_files and not os.path.exists(default_sched):
+                    # scheduler.bin is missing entirely — accelerate will fail
+                    need_skip_scheduler = True
+                else:
+                    for f in sched_files:
+                        try:
+                            sd = torch.load(f, map_location='cpu')
+                            # SequentialLR expects '_schedulers' key; if missing
+                            # the checkpoint was saved with a different scheduler.
+                            if '_schedulers' not in sd:
+                                need_skip_scheduler = True
+                                break
+                        except Exception:
                             need_skip_scheduler = True
                             break
-                    except Exception:
-                        need_skip_scheduler = True
-                        break
 
                 if need_skip_scheduler:
                     log.info(
-                        '[WARN] Scheduler state incompatible with current SequentialLR, '
-                        'temporarily removing scheduler files (scheduler will reset)...',
+                        '[WARN] Scheduler state missing or incompatible with current SequentialLR, '
+                        'will create a compatible dummy scheduler state (scheduler will reset)...',
                         save_to_file=True,
                     )
+                    # Move away any existing (incompatible) scheduler files
                     for f in sched_files:
                         bak = f + '.bak'
                         try:
@@ -470,18 +488,27 @@ class ChatTrainer:
                             moved.append((bak, f))
                         except Exception:
                             pass
+                    # Create a dummy scheduler state compatible with SequentialLR
+                    # so that accelerator.load_state() can load without error.
+                    dummy_state = lr_scheduler.state_dict()
+                    torch.save(dummy_state, default_sched)
+                    moved.append((None, default_sched))  # None means delete on cleanup
 
-            # Synchronise all ranks so that file renames are visible to everyone
+            # Synchronise all ranks so that file changes are visible to everyone
             accelerator.wait_for_everyone()
 
             try:
                 accelerator.load_state(input_dir=state_dir)
             finally:
-                # Restore scheduler state files on main process
+                # Cleanup: restore original scheduler files, remove dummy
                 if accelerator.is_main_process:
                     for bak, orig in moved:
                         try:
-                            os.rename(bak, orig)
+                            if bak is None:
+                                # This was a dummy file we created — remove it
+                                os.remove(orig)
+                            else:
+                                os.rename(bak, orig)
                         except Exception:
                             pass
                 accelerator.wait_for_everyone()
