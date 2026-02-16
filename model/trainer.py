@@ -439,6 +439,7 @@ class ChatTrainer:
             import glob
             state_dir = train_config.train_state_dir
             moved = []
+            tmp_stash_dir = os.path.join(state_dir, '_stashed_ckpt')
 
             if accelerator.is_main_process:
                 # Step 0: Move away custom_checkpoint files that are not registered
@@ -446,13 +447,18 @@ class ChatTrainer:
                 # but current code does not register_for_checkpointing() anything.
                 # accelerate will raise RuntimeError if it finds custom checkpoints
                 # but no registered objects.
+                # We move them into a sub-directory so that accelerate's glob on
+                # state_dir won't find them (rename with .bak suffix still stays
+                # in the same directory and may be picked up on NFS).
                 custom_ckpt_files = glob.glob(os.path.join(state_dir, 'custom_checkpoint_*.pkl'))
+                if custom_ckpt_files:
+                    os.makedirs(tmp_stash_dir, exist_ok=True)
                 for f in custom_ckpt_files:
-                    bak = f + '.bak'
+                    dst = os.path.join(tmp_stash_dir, os.path.basename(f))
                     try:
-                        os.rename(f, bak)
-                        moved.append((bak, f))
-                        log.info(f'[INFO] Moved away custom checkpoint: {f} -> {bak}', save_to_file=True)
+                        shutil.move(f, dst)
+                        moved.append(('custom', dst, f))
+                        log.info(f'[INFO] Stashed custom checkpoint: {f} -> {dst}', save_to_file=True)
                     except Exception:
                         pass
 
@@ -500,14 +506,14 @@ class ChatTrainer:
                         bak = f + '.bak'
                         try:
                             os.rename(f, bak)
-                            moved.append((bak, f))
+                            moved.append(('sched_bak', bak, f))
                         except Exception:
                             pass
                     # Create a dummy scheduler state compatible with SequentialLR
                     # so that accelerator.load_state() can load without error.
                     dummy_state = lr_scheduler.state_dict()
                     torch.save(dummy_state, default_sched)
-                    moved.append((None, default_sched))  # None means delete on cleanup
+                    moved.append(('dummy', default_sched, None))  # dummy means delete on cleanup
 
             # Synchronise all ranks so that file changes are visible to everyone
             accelerator.wait_for_everyone()
@@ -515,17 +521,28 @@ class ChatTrainer:
             try:
                 accelerator.load_state(input_dir=state_dir)
             finally:
-                # Cleanup: restore original scheduler files, remove dummy
+                # Cleanup: restore original files, remove dummy, move back stashed
                 if accelerator.is_main_process:
-                    for bak, orig in moved:
+                    for entry in moved:
                         try:
-                            if bak is None:
+                            kind = entry[0]
+                            if kind == 'dummy':
                                 # This was a dummy file we created — remove it
-                                os.remove(orig)
-                            else:
-                                os.rename(bak, orig)
+                                os.remove(entry[1])
+                            elif kind == 'sched_bak':
+                                # Restore original scheduler file from .bak
+                                os.rename(entry[1], entry[2])
+                            elif kind == 'custom':
+                                # Move custom_checkpoint back from stash dir
+                                shutil.move(entry[1], entry[2])
                         except Exception:
                             pass
+                    # Remove stash dir if empty
+                    try:
+                        if os.path.isdir(tmp_stash_dir):
+                            os.rmdir(tmp_stash_dir)
+                    except Exception:
+                        pass
                 accelerator.wait_for_everyone()
         
         self.model = model
