@@ -235,14 +235,12 @@ class ChatTrainer:
 
         # 剩余内存≥48GB将把数据集留在内存中,因为2个显卡+全全部装载900多万的训练数据到内存需要大概43GB的CPU内存
         # 如果不放在内存中，将会使用迭代器生成数据，CPU 内存小于16GB也可以运行，但是不支持顺序打乱。
-        # 注意：多GPU场景下每个DDP进程都会独立加载数据，但 Linux fork 时
-        # 只读页面会 copy-on-write 共享，实际增量远小于 N × 全量。
-        # 600万条数据 pandas DataFrame 约 4-6GB，3 进程实际增量约 6-8GB。
-        # keep_in_memory=True 走 pandas iloc，随机访问比 Arrow 快 3-5 倍。
-        gpu_count = torch.cuda.device_count()
-        # 估算：pandas 全量约 6GB + 每进程额外 2GB overhead → 需约 6 + gpu_count*2 GB 可用内存
-        mem_needed_estimate = 6.0 + gpu_count * 2.0  # GB
-        keep_in_memory = True if unuse_mem >= mem_needed_estimate else False
+        # Force keep_in_memory=False to prevent memory from growing continuously.
+        # When True, pandas DataFrame will be loaded into memory and may cause
+        # slow memory leak due to DDP multi-process copy-on-write dirtying pages.
+        # Arrow-based access (keep_in_memory=False) uses memory-mapped I/O with
+        # stable memory footprint.
+        keep_in_memory = False
 
         if accelerator.is_main_process:
             log.info('cpu memory available: {:.2f} GB, disk space available: {:.2f} GB, keep dataset in memory: {}.'\
