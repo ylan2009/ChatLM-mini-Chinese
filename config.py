@@ -336,7 +336,7 @@ class TrainConfigPretrainLarge:
     epochs: int = 3                              # 大数据集3个epoch足够
     batch_size_per_gpu: int = 32                 # 🚀 充分利用20G显存
     
-    learn_rate: float = 0.0001                   # 标准学习率
+    learn_rate: float = 0.00015                   # 标准学习率
     div_factor: int = 50                         # 标准div_factor
 
     mixed_precision: str = "bf16"                # 混合精度训练
