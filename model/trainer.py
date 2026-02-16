@@ -275,8 +275,8 @@ class ChatTrainer:
             gpu_cnt = torch.cuda.device_count()
             # 内存紧张时减少worker数量：每个worker会fork进程，占用额外内存
             # 3个DDP进程 × num_workers 个子进程 = 大量内存开销
-            if unuse_mem < 16.0:
-                num_workers = 0  # 内存极度紧张，禁用多进程加载
+            if unuse_mem < 8.0:
+                num_workers = 0  # 内存极度紧张（<8GB），禁用多进程加载
             else:
                 num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
 

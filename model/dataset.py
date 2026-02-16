@@ -26,46 +26,49 @@ class MyDataset(Dataset):
                 buffer_size: int=40960,
             ) -> None:
         '''
-        keep_in_memory: 是否将parquet文件转换为pandas.DataFrame格式存放到内存, 
-            False将使用迭代生成器(迭代生成器不支持打乱数据)，减少大数据集内存占用
+        keep_in_memory: whether to load the entire parquet into a pandas DataFrame in memory.
+            True:  fastest random access via pandas.iloc, but high memory usage (N DDP procs × full dataset).
+            False: uses PyArrow column-level indexing for random access with minimal memory footprint.
+                   Fully supports multi-GPU / DistributedSampler (index-based access).
         '''
         super().__init__()
-
-        if cuda.device_count() >= 2 and not keep_in_memory:
-            raise ValueError(f'多GPU时使用MyDataset，参数keep_in_memory必须=True，否则无法进行分布式训练. 当前keep_in_memory={keep_in_memory}')
 
         self.keep_in_memory = keep_in_memory
         self.max_seq_len = max_seq_len
 
-        # 使用pyarrow.parquet读取，to_pandas、for遍历速度更快
+        # Read the parquet file via PyArrow
         parquet_table = pq.read_table(parquet_file)
 
-        # 获取数据集长度
+        # Dataset length
         self.length = parquet_table.num_rows
 
-        # 缓冲区大小不能超过数据长度
+        # Buffer size for the legacy generator path (single-GPU fallback)
         self.buffer_size = self.length if buffer_size > self.length else buffer_size
 
         if keep_in_memory:
-            # 转化为pandas放到内存中
-            self.data = parquet_table.to_pandas()  
+            # Load entire dataset into pandas for fastest iloc access
+            self.data = parquet_table.to_pandas()
+            self._prompt_col = None
+            self._response_col = None
         else:
-            self.data = parquet_table
+            # Keep only the two Arrow columns needed; release the full table reference.
+            # Arrow ChunkedArray supports O(1) __getitem__ by index without slice()/take() overhead.
+            self._prompt_col = parquet_table.column('prompt')
+            self._response_col = parquet_table.column('response')
+            self.data = None  # not used in this mode
+            del parquet_table
 
-        # 初始化tokenizer，自动选择合适的tokenizer类型
-        # 优先尝试 T5Tokenizer（适合 SentencePiece tokenizer）
+        # Initialize tokenizer – try T5Tokenizer first (SentencePiece), fallback to others
         try:
             self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_dir)
         except Exception as e:
-            # 如果T5Tokenizer失败，尝试使用AutoTokenizer
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
             except:
-                # 最后尝试PreTrainedTokenizerFast
                 self.tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
 
-        # 在这里初始化generator
-        self.sample_generator = self.item_generator()
+        # Legacy generator (only used when keep_in_memory=False on single GPU)
+        self.sample_generator = None
     
     def item_generator(self,) -> tuple:
         '''
@@ -96,13 +99,17 @@ class MyDataset(Dataset):
     
     def __getitem__(self, index):
         '''
-        返回一条样本
+        Return a single sample by index.
+        Both keep_in_memory=True and False support random index access,
+        so DistributedSampler / multi-GPU training works in either mode.
         '''
         if self.keep_in_memory:
             data = self.data
             prompt, response = data.iloc[index].prompt, data.iloc[index].response
         else:
-            prompt, response = next(self.sample_generator)
+            # Arrow ChunkedArray[index] returns a pyarrow Scalar; .as_py() converts to str.
+            prompt = self._prompt_col[index].as_py()
+            response = self._response_col[index].as_py()
 
         max_seq_len = self.max_seq_len - 5 # len('[EOS]') = 5
         # add an eos token note that end of resopnse, using in generate.
