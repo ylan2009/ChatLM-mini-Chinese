@@ -152,20 +152,35 @@ start_training() {
         fi
     fi
 
-    # Launch training in background, redirect output to log
+    # Launch training in background with its own process group, redirect output to log
     cd "${SCRIPT_DIR}"
-    ${cmd} >> "${train_log}" 2>&1 &
+    setsid ${cmd} >> "${train_log}" 2>&1 &
     TRAIN_PID=$!
 
     log "Training started with PID: ${TRAIN_PID}"
+}
+
+# Kill a process and all its descendants
+kill_tree() {
+    local pid=$1
+    local sig=$2
+    # Get all child PIDs recursively
+    local children
+    children=$(pgrep -P "${pid}" 2>/dev/null)
+    for child in ${children}; do
+        kill_tree "${child}" "${sig}"
+    done
+    kill -"${sig}" "${pid}" 2>/dev/null
 }
 
 stop_training() {
     if [ -n "${TRAIN_PID}" ] && kill -0 "${TRAIN_PID}" 2>/dev/null; then
         log "Stopping training (PID: ${TRAIN_PID}) with SIGINT (graceful shutdown)..."
         
-        # Send SIGINT to the entire process group for multi-GPU training
-        kill -INT -"${TRAIN_PID}" 2>/dev/null || kill -INT "${TRAIN_PID}" 2>/dev/null
+        # Send SIGINT to the entire process group (setsid makes TRAIN_PID the group leader)
+        kill -INT -"${TRAIN_PID}" 2>/dev/null
+        # Also send to all descendants in case process group signal doesn't reach them
+        kill_tree "${TRAIN_PID}" INT 2>/dev/null
         
         # Wait for graceful shutdown
         local waited=0
@@ -176,12 +191,14 @@ stop_training() {
         
         if kill -0 "${TRAIN_PID}" 2>/dev/null; then
             log "Training did not stop gracefully after ${GRACE_PERIOD}s, sending SIGTERM..."
-            kill -TERM -"${TRAIN_PID}" 2>/dev/null || kill -TERM "${TRAIN_PID}" 2>/dev/null
+            kill -TERM -"${TRAIN_PID}" 2>/dev/null
+            kill_tree "${TRAIN_PID}" TERM 2>/dev/null
             sleep 5
             
             if kill -0 "${TRAIN_PID}" 2>/dev/null; then
-                log "Force killing training process..."
-                kill -9 -"${TRAIN_PID}" 2>/dev/null || kill -9 "${TRAIN_PID}" 2>/dev/null
+                log "Force killing training process tree..."
+                kill -9 -"${TRAIN_PID}" 2>/dev/null
+                kill_tree "${TRAIN_PID}" 9 2>/dev/null
             fi
         fi
         
@@ -265,7 +282,12 @@ handle_subcommand() {
                 echo "No running scheduler found."
                 exit 1
             fi
-            touch "${PAUSE_FILE}"
+            if [ -f "${PAUSE_FILE}" ]; then
+                echo "Scheduler is already paused."
+                exit 0
+            fi
+            # Send SIGUSR1 first, then the handler in the main process will
+            # detect PAUSE_FILE doesn't exist => call do_pause => touch file + stop training
             kill -USR1 "${running_pid}" 2>/dev/null
             echo "Pause signal sent to scheduler (PID: ${running_pid})."
             echo "Training will be stopped and scheduler will hold until resumed."
@@ -275,7 +297,11 @@ handle_subcommand() {
                 echo "No running scheduler found."
                 exit 1
             fi
-            rm -f "${PAUSE_FILE}"
+            if [ ! -f "${PAUSE_FILE}" ]; then
+                echo "Scheduler is not paused."
+                exit 0
+            fi
+            # Send SIGUSR1, the handler will detect PAUSE_FILE exists => call do_resume => remove file
             kill -USR1 "${running_pid}" 2>/dev/null
             echo "Resume signal sent to scheduler (PID: ${running_pid})."
             echo "Training will restart at next schedule check."
