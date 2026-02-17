@@ -30,11 +30,8 @@ END_TIME="20:00"
 # --- Training Configuration ---
 NUM_PROCESSES=3                          # Number of GPUs
 TRAIN_SCRIPT="./train.py"               # Training script path
-TRAIN_ARGS="train --is_keep_training=True"  # Training arguments (always resume from checkpoint)
-
-# For first run (no checkpoint exists), set this to your initial command:
-# FIRST_RUN_ARGS="train"
-# After first run completes/interrupts, the script will auto-switch to resume mode.
+TRAIN_ARGS="train"                       # Base training arguments (--is_keep_training is auto-detected)
+STATE_DIR="./model_save/train_latest_state"  # Checkpoint state directory (used to auto-detect resume)
 
 # --- Advanced Configuration ---
 POLL_INTERVAL=60                         # Seconds between time checks when waiting
@@ -131,11 +128,22 @@ seconds_until_end() {
 # --- Training Process Management ---
 start_training() {
     local train_log="${LOG_DIR}/train_$(date '+%Y%m%d_%H%M%S').log"
+
+    # Auto-detect checkpoint: if state directory exists and is not empty, resume from it
+    local actual_args="${TRAIN_ARGS}"
+    local abs_state_dir="${SCRIPT_DIR}/${STATE_DIR#./}"
+    if [ -d "${abs_state_dir}" ] && [ "$(ls -A "${abs_state_dir}" 2>/dev/null)" ]; then
+        actual_args="${TRAIN_ARGS} --is_keep_training=True"
+        log "Checkpoint found in ${abs_state_dir}, resuming from checkpoint."
+    else
+        log "No checkpoint found in ${abs_state_dir}, starting fresh training."
+    fi
+
     log "Starting training (log: ${train_log})"
-    log "Command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+    log "Command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${actual_args}"
 
     # Activate conda environment if specified
-    local cmd="accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+    local cmd="accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${actual_args}"
     if [ -n "${CONDA_ENV}" ]; then
         # Try to activate conda
         if command -v conda &>/dev/null; then
@@ -326,7 +334,8 @@ main() {
     log "=========================================="
     log "Training window: ${START_TIME} - ${END_TIME} (${TIMEZONE})"
     log "GPUs: ${NUM_PROCESSES}"
-    log "Train command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+    log "Train command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS} (--is_keep_training auto-detected)"
+    log "Checkpoint state dir: ${STATE_DIR}"
     log "Poll interval: ${POLL_INTERVAL}s"
     log "Controls: $0 pause|resume|status|stop"
     log "=========================================="
