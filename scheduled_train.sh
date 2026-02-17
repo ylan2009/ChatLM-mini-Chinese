@@ -1,0 +1,252 @@
+#!/bin/bash
+# =============================================================================
+# Scheduled Training Script
+# 
+# Automatically start/stop training within configured time windows.
+# Uses Ctrl+C (SIGINT) to gracefully stop training at end time,
+# and resumes from checkpoint at next start time.
+#
+# Usage:
+#   chmod +x scheduled_train.sh
+#   ./scheduled_train.sh
+#
+# Configuration:
+#   Edit the variables below to set your schedule and training parameters.
+# =============================================================================
+
+# ========================== Configuration ==========================
+
+# --- Schedule Configuration ---
+# Format: HH:MM (24-hour, Beijing time)
+# The script will start training at START_TIME and stop at END_TIME each day.
+# Supports overnight windows, e.g. START_TIME="22:00" END_TIME="08:00"
+START_TIME="10:48"
+END_TIME="20:00"
+
+# --- Training Configuration ---
+NUM_PROCESSES=3                          # Number of GPUs
+TRAIN_SCRIPT="./train.py"               # Training script path
+TRAIN_ARGS="train --is_keep_training=True"  # Training arguments (always resume from checkpoint)
+
+# For first run (no checkpoint exists), set this to your initial command:
+# FIRST_RUN_ARGS="train"
+# After first run completes/interrupts, the script will auto-switch to resume mode.
+
+# --- Advanced Configuration ---
+POLL_INTERVAL=60                         # Seconds between time checks when waiting
+GRACE_PERIOD=30                          # Seconds to wait after SIGINT before SIGTERM
+CONDA_ENV="chatlm"                       # Conda environment name (leave empty to skip activation)
+TIMEZONE="Asia/Shanghai"                 # Timezone for schedule (Beijing time)
+
+# ========================== End Configuration ==========================
+
+# Export timezone
+export TZ="${TIMEZONE}"
+
+# Script directory (for relative paths)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "${LOG_DIR}"
+
+SCHEDULE_LOG="${LOG_DIR}/scheduled_train.log"
+TRAIN_PID=""
+
+# --- Logging ---
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "${msg}"
+    echo "${msg}" >> "${SCHEDULE_LOG}"
+}
+
+# --- Time Utilities ---
+# Get current time in minutes since midnight
+get_current_minutes() {
+    echo $(( $(date +%H) * 60 + $(date +%M) ))
+}
+
+# Convert HH:MM to minutes since midnight
+time_to_minutes() {
+    local h="${1%%:*}"
+    local m="${1##*:}"
+    # Remove leading zeros to avoid octal interpretation
+    h=$((10#$h))
+    m=$((10#$m))
+    echo $(( h * 60 + m ))
+}
+
+# Check if current time is within the training window
+is_within_window() {
+    local now
+    now=$(get_current_minutes)
+    local start
+    start=$(time_to_minutes "${START_TIME}")
+    local end
+    end=$(time_to_minutes "${END_TIME}")
+
+    if [ "${start}" -le "${end}" ]; then
+        # Same-day window: e.g. 08:00 - 18:00
+        [ "${now}" -ge "${start}" ] && [ "${now}" -lt "${end}" ]
+    else
+        # Overnight window: e.g. 22:00 - 08:00
+        [ "${now}" -ge "${start}" ] || [ "${now}" -lt "${end}" ]
+    fi
+}
+
+# Calculate seconds until next start time
+seconds_until_start() {
+    local now
+    now=$(get_current_minutes)
+    local start
+    start=$(time_to_minutes "${START_TIME}")
+
+    local diff=$(( start - now ))
+    if [ "${diff}" -le 0 ]; then
+        diff=$(( diff + 1440 ))  # Add 24 hours
+    fi
+    echo $(( diff * 60 ))
+}
+
+# Calculate seconds until end time
+seconds_until_end() {
+    local now
+    now=$(get_current_minutes)
+    local end
+    end=$(time_to_minutes "${END_TIME}")
+
+    local diff=$(( end - now ))
+    if [ "${diff}" -le 0 ]; then
+        diff=$(( diff + 1440 ))  # Add 24 hours
+    fi
+    echo $(( diff * 60 ))
+}
+
+# --- Training Process Management ---
+start_training() {
+    local train_log="${LOG_DIR}/train_$(date '+%Y%m%d_%H%M%S').log"
+    log "Starting training (log: ${train_log})"
+    log "Command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+
+    # Activate conda environment if specified
+    local cmd="accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+    if [ -n "${CONDA_ENV}" ]; then
+        # Try to activate conda
+        if command -v conda &>/dev/null; then
+            eval "$(conda shell.bash hook)"
+            conda activate "${CONDA_ENV}" 2>/dev/null
+        fi
+    fi
+
+    # Launch training in background, redirect output to log
+    cd "${SCRIPT_DIR}"
+    ${cmd} >> "${train_log}" 2>&1 &
+    TRAIN_PID=$!
+
+    log "Training started with PID: ${TRAIN_PID}"
+}
+
+stop_training() {
+    if [ -n "${TRAIN_PID}" ] && kill -0 "${TRAIN_PID}" 2>/dev/null; then
+        log "Stopping training (PID: ${TRAIN_PID}) with SIGINT (graceful shutdown)..."
+        
+        # Send SIGINT to the entire process group for multi-GPU training
+        kill -INT -"${TRAIN_PID}" 2>/dev/null || kill -INT "${TRAIN_PID}" 2>/dev/null
+        
+        # Wait for graceful shutdown
+        local waited=0
+        while kill -0 "${TRAIN_PID}" 2>/dev/null && [ "${waited}" -lt "${GRACE_PERIOD}" ]; do
+            sleep 1
+            waited=$((waited + 1))
+        done
+        
+        if kill -0 "${TRAIN_PID}" 2>/dev/null; then
+            log "Training did not stop gracefully after ${GRACE_PERIOD}s, sending SIGTERM..."
+            kill -TERM -"${TRAIN_PID}" 2>/dev/null || kill -TERM "${TRAIN_PID}" 2>/dev/null
+            sleep 5
+            
+            if kill -0 "${TRAIN_PID}" 2>/dev/null; then
+                log "Force killing training process..."
+                kill -9 -"${TRAIN_PID}" 2>/dev/null || kill -9 "${TRAIN_PID}" 2>/dev/null
+            fi
+        fi
+        
+        wait "${TRAIN_PID}" 2>/dev/null
+        log "Training stopped."
+        TRAIN_PID=""
+    fi
+}
+
+is_training_running() {
+    [ -n "${TRAIN_PID}" ] && kill -0 "${TRAIN_PID}" 2>/dev/null
+}
+
+# --- Signal Handlers ---
+cleanup() {
+    log "Received termination signal, cleaning up..."
+    stop_training
+    log "Scheduler exiting."
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM SIGHUP
+
+# --- Main Loop ---
+main() {
+    log "=========================================="
+    log "Scheduled Training Scheduler Started"
+    log "=========================================="
+    log "Training window: ${START_TIME} - ${END_TIME} (${TIMEZONE})"
+    log "GPUs: ${NUM_PROCESSES}"
+    log "Train command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
+    log "Poll interval: ${POLL_INTERVAL}s"
+    log "=========================================="
+
+    while true; do
+        if is_within_window; then
+            if ! is_training_running; then
+                log "Within training window [${START_TIME} - ${END_TIME}], starting training..."
+                start_training
+                sleep 5  # Brief pause to let process start
+            fi
+
+            # Monitor: wait until either training ends or window expires
+            while is_within_window && is_training_running; do
+                sleep "${POLL_INTERVAL}"
+            done
+
+            if is_training_running && ! is_within_window; then
+                # Window expired, stop training
+                log "Training window [${START_TIME} - ${END_TIME}] ended, stopping training..."
+                stop_training
+                log "Training will resume at next window start: ${START_TIME}"
+            elif ! is_training_running && is_within_window; then
+                # Training finished on its own within the window
+                log "Training process exited on its own (possibly completed all epochs)."
+                log "Waiting for next training window..."
+                # Wait until we're outside the window, then continue the main loop
+                while is_within_window; do
+                    sleep "${POLL_INTERVAL}"
+                done
+            fi
+        else
+            # Outside training window
+            local secs
+            secs=$(seconds_until_start)
+            local hrs=$((secs / 3600))
+            local mins=$(( (secs % 3600) / 60 ))
+            log "Outside training window. Next start in ~${hrs}h ${mins}m (at ${START_TIME})"
+
+            # Sleep in intervals to stay responsive to signals
+            local slept=0
+            while [ "${slept}" -lt "${secs}" ] && ! is_within_window; do
+                local chunk="${POLL_INTERVAL}"
+                if [ $((secs - slept)) -lt "${chunk}" ]; then
+                    chunk=$((secs - slept))
+                fi
+                sleep "${chunk}"
+                slept=$((slept + chunk))
+            done
+        fi
+    done
+}
+
+main
