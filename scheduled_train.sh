@@ -66,7 +66,9 @@ log() {
 # --- Time Utilities ---
 # Get current time in minutes since midnight
 get_current_minutes() {
-    echo $(( $(date +%H) * 60 + $(date +%M) ))
+    local h=$(date +%H)
+    local m=$(date +%M)
+    echo $(( 10#$h * 60 + 10#$m ))
 }
 
 # Convert HH:MM to minutes since midnight
