@@ -8,7 +8,11 @@
 #
 # Usage:
 #   chmod +x scheduled_train.sh
-#   ./scheduled_train.sh
+#   ./scheduled_train.sh              # Start the scheduler
+#   ./scheduled_train.sh pause        # Pause: stop current training and hold
+#   ./scheduled_train.sh resume       # Resume: continue scheduled training
+#   ./scheduled_train.sh status       # Show current scheduler status
+#   ./scheduled_train.sh stop         # Fully stop the scheduler
 #
 # Configuration:
 #   Edit the variables below to set your schedule and training parameters.
@@ -50,6 +54,10 @@ mkdir -p "${LOG_DIR}"
 
 SCHEDULE_LOG="${LOG_DIR}/scheduled_train.log"
 TRAIN_PID=""
+
+# Control files for pause/resume
+PAUSE_FILE="${LOG_DIR}/.scheduler_paused"
+PID_FILE="${LOG_DIR}/.scheduler_pid"
 
 # --- Logging ---
 log() {
@@ -179,18 +187,140 @@ is_training_running() {
     [ -n "${TRAIN_PID}" ] && kill -0 "${TRAIN_PID}" 2>/dev/null
 }
 
+# --- Pause/Resume Control ---
+is_paused() {
+    [ -f "${PAUSE_FILE}" ]
+}
+
+do_pause() {
+    if ! is_paused; then
+        touch "${PAUSE_FILE}"
+        log "Scheduler PAUSED by user command. Training will be stopped and held."
+        # If training is running, stop it gracefully
+        if is_training_running; then
+            stop_training
+        fi
+    else
+        log "Scheduler is already paused."
+    fi
+}
+
+do_resume() {
+    if is_paused; then
+        rm -f "${PAUSE_FILE}"
+        log "Scheduler RESUMED by user command. Training will restart in next window check."
+    else
+        log "Scheduler is not paused."
+    fi
+}
+
+# Handle SIGUSR1 as toggle pause/resume
+toggle_pause() {
+    if is_paused; then
+        do_resume
+    else
+        do_pause
+    fi
+}
+
+trap toggle_pause SIGUSR1
+
 # --- Signal Handlers ---
 cleanup() {
     log "Received termination signal, cleaning up..."
     stop_training
+    rm -f "${PID_FILE}"
+    rm -f "${PAUSE_FILE}"
     log "Scheduler exiting."
     exit 0
 }
 
 trap cleanup SIGINT SIGTERM SIGHUP
 
+# --- CLI Subcommands ---
+# Handle pause/resume/status/stop commands sent to a running scheduler
+handle_subcommand() {
+    local cmd="$1"
+    local running_pid=""
+
+    if [ -f "${PID_FILE}" ]; then
+        running_pid=$(cat "${PID_FILE}")
+        if ! kill -0 "${running_pid}" 2>/dev/null; then
+            running_pid=""
+            rm -f "${PID_FILE}"
+        fi
+    fi
+
+    case "${cmd}" in
+        pause)
+            if [ -z "${running_pid}" ]; then
+                echo "No running scheduler found."
+                exit 1
+            fi
+            touch "${PAUSE_FILE}"
+            kill -USR1 "${running_pid}" 2>/dev/null
+            echo "Pause signal sent to scheduler (PID: ${running_pid})."
+            echo "Training will be stopped and scheduler will hold until resumed."
+            ;;
+        resume)
+            if [ -z "${running_pid}" ]; then
+                echo "No running scheduler found."
+                exit 1
+            fi
+            rm -f "${PAUSE_FILE}"
+            kill -USR1 "${running_pid}" 2>/dev/null
+            echo "Resume signal sent to scheduler (PID: ${running_pid})."
+            echo "Training will restart at next schedule check."
+            ;;
+        status)
+            if [ -z "${running_pid}" ]; then
+                echo "Scheduler: NOT RUNNING"
+            else
+                echo "Scheduler: RUNNING (PID: ${running_pid})"
+                if [ -f "${PAUSE_FILE}" ]; then
+                    echo "State:     PAUSED"
+                else
+                    echo "State:     ACTIVE"
+                fi
+            fi
+            echo "Window:    ${START_TIME} - ${END_TIME} (${TIMEZONE})"
+            # Show recent log
+            if [ -f "${SCHEDULE_LOG}" ]; then
+                echo ""
+                echo "--- Recent log (last 10 lines) ---"
+                tail -n 10 "${SCHEDULE_LOG}"
+            fi
+            ;;
+        stop)
+            if [ -z "${running_pid}" ]; then
+                echo "No running scheduler found."
+                exit 1
+            fi
+            echo "Sending stop signal to scheduler (PID: ${running_pid})..."
+            kill -TERM "${running_pid}" 2>/dev/null
+            echo "Stop signal sent. Scheduler will clean up and exit."
+            ;;
+        *)
+            echo "Unknown command: ${cmd}"
+            echo "Usage: $0 [pause|resume|status|stop]"
+            exit 1
+            ;;
+    esac
+    exit 0
+}
+
+# If a subcommand is given, handle it and exit
+if [ $# -gt 0 ]; then
+    handle_subcommand "$1"
+fi
+
 # --- Main Loop ---
 main() {
+    # Save our PID for subcommands
+    echo $$ > "${PID_FILE}"
+    # Clean up any stale pause file from previous run
+    rm -f "${PAUSE_FILE}"
+
     log "=========================================="
     log "Scheduled Training Scheduler Started"
     log "=========================================="
@@ -198,9 +328,24 @@ main() {
     log "GPUs: ${NUM_PROCESSES}"
     log "Train command: accelerate launch --multi_gpu --num_processes ${NUM_PROCESSES} ${TRAIN_SCRIPT} ${TRAIN_ARGS}"
     log "Poll interval: ${POLL_INTERVAL}s"
+    log "Controls: $0 pause|resume|status|stop"
     log "=========================================="
 
     while true; do
+        # Check if paused
+        if is_paused; then
+            if is_training_running; then
+                log "Scheduler is paused, stopping current training..."
+                stop_training
+            fi
+            # Wait until resumed
+            while is_paused; do
+                sleep "${POLL_INTERVAL}"
+            done
+            log "Scheduler resumed, continuing normal operation..."
+            continue
+        fi
+
         if is_within_window; then
             if ! is_training_running; then
                 log "Within training window [${START_TIME} - ${END_TIME}], starting training..."
@@ -209,9 +354,14 @@ main() {
             fi
 
             # Monitor: wait until either training ends or window expires
-            while is_within_window && is_training_running; do
+            while is_within_window && is_training_running && ! is_paused; do
                 sleep "${POLL_INTERVAL}"
             done
+
+            # If paused during training, let the pause block handle it
+            if is_paused; then
+                continue
+            fi
 
             if is_training_running && ! is_within_window; then
                 # Window expired, stop training
@@ -223,7 +373,7 @@ main() {
                 log "Training process exited on its own (possibly completed all epochs)."
                 log "Waiting for next training window..."
                 # Wait until we're outside the window, then continue the main loop
-                while is_within_window; do
+                while is_within_window && ! is_paused; do
                     sleep "${POLL_INTERVAL}"
                 done
             fi
@@ -237,7 +387,7 @@ main() {
 
             # Sleep in intervals to stay responsive to signals
             local slept=0
-            while [ "${slept}" -lt "${secs}" ] && ! is_within_window; do
+            while [ "${slept}" -lt "${secs}" ] && ! is_within_window && ! is_paused; do
                 local chunk="${POLL_INTERVAL}"
                 if [ $((secs - slept)) -lt "${chunk}" ]; then
                     chunk=$((secs - slept))
