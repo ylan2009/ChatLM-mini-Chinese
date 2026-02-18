@@ -298,6 +298,8 @@ class ChatTrainer:
             # 3个DDP进程 × num_workers 个子进程 = 大量内存开销
             if unuse_mem < 8.0:
                 num_workers = 0  # 内存极度紧张（<8GB），禁用多进程加载
+            elif unuse_mem >= 24.0:
+                num_workers = min(4, cpu_cnt) if cpu_cnt > 0 else 2  # 内存充足（>=24GB），使用4个worker
             else:
                 num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
 
@@ -361,10 +363,10 @@ class ChatTrainer:
 
         # Use torch.compile to speed up training (requires PyTorch 2.0+)
         # First compilation takes a few minutes, but subsequent steps are 10-30% faster.
-        # if hasattr(torch, 'compile'):
-        #     if accelerator.is_main_process:
-        #         log.info('Applying torch.compile to model for faster training...', save_to_file=True)
-        #     model = torch.compile(model)
+        if hasattr(torch, 'compile'):
+            if accelerator.is_main_process:
+                log.info('Applying torch.compile to model for faster training...', save_to_file=True)
+            model = torch.compile(model)
 
         # 微调加载的模型并冻结embedding和encoder
         if is_finetune:
