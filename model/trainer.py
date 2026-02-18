@@ -361,12 +361,8 @@ class ChatTrainer:
 
         model = TextToTextModel(t5_config)
 
-        # Use torch.compile to speed up training (requires PyTorch 2.0+)
-        # First compilation takes a few minutes, but subsequent steps are 10-30% faster.
-        if hasattr(torch, 'compile'):
-            if accelerator.is_main_process:
-                log.info('Applying torch.compile to model for faster training...', save_to_file=True)
-            model = torch.compile(model)
+        # NOTE: torch.compile is applied AFTER accelerator.load_state() to avoid
+        # state_dict key mismatch (_orig_mod. prefix). See below.
 
         # 微调加载的模型并冻结embedding和encoder
         if is_finetune:
@@ -585,6 +581,17 @@ class ChatTrainer:
                 except Exception as e:
                     if accelerator.is_main_process:
                         log.info(f'[WARN] Failed to load training progress: {e}, starting from epoch 0 step 0', save_to_file=True)
+
+        # Apply torch.compile to the model's forward method only.
+        # We compile just forward() instead of the whole model to avoid wrapping it
+        # in OptimizedModule, which adds '_orig_mod.' prefix to all state_dict keys
+        # and breaks checkpoint save/load compatibility.
+        if hasattr(torch, 'compile'):
+            if accelerator.is_main_process:
+                log.info('Applying torch.compile to model forward for faster training...', save_to_file=True)
+            # Get the underlying model (unwrap DDP/accelerate wrappers)
+            unwrapped = accelerator.unwrap_model(model)
+            unwrapped.forward = torch.compile(unwrapped.forward)
 
         self.model = model
         self.accelerator = accelerator
