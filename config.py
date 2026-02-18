@@ -125,7 +125,7 @@ class TrainConfig:
     output_dir: str = PROJECT_ROOT + '/model_save/pretrain'
 
     logging_steps: int = 100                    # 🚀 从50提升到100，减少GPU→CPU同步频率
-    save_steps: int = 5000
+    save_steps: int = 500                       # every 500 steps save checkpoint
     
     # dataset_cache_dir: str = PROJECT_ROOT + '/data/.cache'
     # trainer_log_file: str = PROJECT_ROOT + '/logs/trainer.log'
