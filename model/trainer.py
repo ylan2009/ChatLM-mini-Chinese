@@ -54,25 +54,46 @@ class ChatTrainer:
     
     def process_exit_handler(self, signal_received, frame) -> None:
         '''
-        进程退出时的操作，保存模型
+        进程退出时的操作，保存模型。
+        支持交互式（手动Ctrl+C）和非交互式（脚本SIGINT）两种场景。
         '''
         if self.accelerator and self.model:
-            ask = "you are pressed `ctrl+c`,  do you want to save checkpoint? Yes (y) or No (n)"
-            self.accelerator.print(ask)
-            ins = input()
+            # Detect if running interactively (has a terminal) or from a script
+            interactive = os.isatty(sys.stdin.fileno()) if hasattr(sys.stdin, 'fileno') else False
             
-            if ins.lower() in ('yes', 'y'):
-
-                suffix =  'exit_save_{}'.format(str(time.strftime('%Y%m%d%H%M%S', time.localtime())))
-
+            do_save = True
+            if interactive:
+                ask = "you are pressed `ctrl+c`,  do you want to save checkpoint? Yes (y) or No (n)"
+                self.accelerator.print(ask)
+                try:
+                    ins = input()
+                    do_save = ins.lower() in ('yes', 'y')
+                except (EOFError, OSError):
+                    # Non-interactive stdin, default to save
+                    do_save = True
+            else:
+                self.accelerator.print('Received SIGINT, saving checkpoint automatically...')
+            
+            if do_save:
                 self.accelerator.wait_for_everyone()
                 self.accelerator.save_state(output_dir=self.train_config.train_state_dir)
 
-                self.accelerator.print('model ckeck point has been saved in {}'.format(self.train_config.train_state_dir))
+                # Also save training progress if we have tracking info
+                if hasattr(self, '_current_epoch') and hasattr(self, '_current_step'):
+                    if self.accelerator.is_main_process:
+                        import json
+                        progress_file = os.path.join(self.train_config.train_state_dir, 'training_progress.json')
+                        try:
+                            with open(progress_file, 'w') as f:
+                                json.dump({'epoch': self._current_epoch, 'step': self._current_step + 1}, f)
+                        except Exception:
+                            pass
+
+                self.accelerator.print('model check point has been saved in {}'.format(self.train_config.train_state_dir))
         
             sys.exit(0)
         else:
-            print('process not in trainingg, exit.')
+            print('process not in training, exit.')
             sys.exit(0)
 
     def save_model(self, suffix: Union[str, int]) -> None:
@@ -544,7 +565,25 @@ class ChatTrainer:
                     except Exception:
                         pass
                 accelerator.wait_for_everyone()
-        
+
+        # --- Restore training progress (epoch / step) from checkpoint ---
+        resume_epoch = 0
+        resume_step = 0
+        if is_keep_training:
+            progress_file = os.path.join(train_config.train_state_dir, 'training_progress.json')
+            if os.path.exists(progress_file):
+                import json
+                try:
+                    with open(progress_file, 'r') as f:
+                        progress_info = json.load(f)
+                    resume_epoch = progress_info.get('epoch', 0)
+                    resume_step = progress_info.get('step', 0)
+                    if accelerator.is_main_process:
+                        log.info(f'Resuming from epoch {resume_epoch}, step {resume_step}', save_to_file=True)
+                except Exception as e:
+                    if accelerator.is_main_process:
+                        log.info(f'[WARN] Failed to load training progress: {e}, starting from epoch 0 step 0', save_to_file=True)
+
         self.model = model
         self.accelerator = accelerator
         
@@ -575,7 +614,7 @@ class ChatTrainer:
 
         # end if
 
-        for epoch in range(train_config.epochs):
+        for epoch in range(resume_epoch, train_config.epochs):
             
             if accelerator.is_main_process:
                 epoch_show_txt = 'epoch: {}/{}, avg_loss: {:.6f}, best_epoch: {}, best_bleu: {}'.format(
@@ -583,13 +622,31 @@ class ChatTrainer:
                 )
                 progress.update(epoch_progress, show_info=epoch_show_txt)
                 progress.reset(steps_progress)
+                # Advance epoch progress bar to reflect skipped epochs
+                if epoch == resume_epoch and resume_epoch > 0:
+                    progress.update(epoch_progress, completed=resume_epoch)
 
             epoch_loss_list = []
             model.train()
 
             # torch.cuda.empty_cache()
 
-            for step, batch_data in enumerate(train_dataloader):
+            # If resuming mid-epoch, skip already-processed batches
+            skip_steps = 0
+            if epoch == resume_epoch and resume_step > 0:
+                skip_steps = resume_step
+                if accelerator.is_main_process:
+                    log.info(f'Skipping first {skip_steps} steps of epoch {epoch} (already processed)', save_to_file=True)
+                active_dataloader = accelerator.skip_first_batches(train_dataloader, num_batches=skip_steps)
+            else:
+                active_dataloader = train_dataloader
+
+            for step, batch_data in enumerate(active_dataloader):
+                # Adjust step counter to reflect actual position in the epoch
+                step = step + skip_steps
+                # Track current position for SIGINT handler to save progress
+                self._current_epoch = epoch
+                self._current_step = step
 
                 input_ids, input_mask = batch_data['input_ids'], batch_data['input_mask']
                 target_ids = batch_data['target_ids']
@@ -619,6 +676,12 @@ class ChatTrainer:
                 if (step + 1) % save_steps == 0 or step == steps_per_epoch:
                     self.save_model('epoch_{}_latest'.format(epoch))
                     accelerator.save_state(output_dir=train_config.train_state_dir)
+                    # Save training progress (epoch / step) for checkpoint resume
+                    if accelerator.is_main_process:
+                        import json
+                        progress_file = os.path.join(train_config.train_state_dir, 'training_progress.json')
+                        with open(progress_file, 'w') as f:
+                            json.dump({'epoch': epoch, 'step': step + 1}, f)
                 
                 # ==================================以下记录loss到日志============================================
                 # 每n步更新一次，避免频繁的cpu-gpu数据复制
@@ -676,6 +739,12 @@ class ChatTrainer:
                 # self.delete_early_checkpoint(epoch=epoch, keep_latest_n=train_config.keep_latest_n_ckp)
                 self.save_model('best')
                 accelerator.save_state(output_dir=train_config.train_state_dir)
+                # Save progress at epoch boundary (next epoch, step 0)
+                if accelerator.is_main_process:
+                    import json
+                    progress_file = os.path.join(train_config.train_state_dir, 'training_progress.json')
+                    with open(progress_file, 'w') as f:
+                        json.dump({'epoch': epoch + 1, 'step': 0}, f)
 
             # 每个epoch打印一下日志
             if accelerator.is_main_process:
