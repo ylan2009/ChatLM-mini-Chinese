@@ -94,7 +94,7 @@ class SFTconfig:
 # 以下为训练的配置
 @dataclass
 class TrainConfig:
-    epochs: int = 3                                 # 增加到5个epoch，让模型充分学习
+    epochs: int = 6                                 # 增加到5个epoch，让模型充分学习
     batch_size_per_gpu: int = 32                    # 🚀 从24提升到32，充分利用GPU显存（GPU显存使用率57-67%，还有空间）
     
     learn_rate: float = 0.00015                     # 最大 div_factor * learn_rate
