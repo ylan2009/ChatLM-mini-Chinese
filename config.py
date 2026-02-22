@@ -333,7 +333,7 @@ class TrainConfigPretrainLarge:
     预期GPU显存占用：16-18GB/GPU
     预期训练速度：约52k steps/epoch（1000万数据）
     """
-    epochs: int = 3                              # 大数据集3个epoch足够
+    epochs: int = 6                              # 增加到6个epoch，让模型充分收敛
     batch_size_per_gpu: int = 32                 # 🚀 充分利用20G显存
     
     learn_rate: float = 0.00015                   # 标准学习率
