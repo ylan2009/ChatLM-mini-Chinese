@@ -334,11 +334,10 @@ class TrainConfigSFTUltra:
 
     mixed_precision: str = "bf16"                # 混合精度训练
 
-    # 大幅减少梯度累积，因为batch_size已经很大
-    # 实际有效batch_size = 32 * 3(GPU) * 1 = 96
-    gradient_accumulation_steps: int = 1         # 🚀 从2降到1，减少内存占用
+    # 实际有效batch_size = 24 * 3(GPU) * 2 = 144
+    gradient_accumulation_steps: int = 2         # 🔧 恢复为2，保持训练稳定性（有效batch=144）
 
-    warmup_steps: int = 50                       # 小数据集减少warmup步数
+    warmup_steps: int = 100                      # 🔧 恢复为100，避免学习率上升过快导致训练不稳定
     
     max_grad_norm: float = 1.0                   # 梯度裁剪
 
@@ -377,9 +376,9 @@ class TrainConfigSFTUltra:
     compile_mode: str = "default"                # 🚀 编译模式：default支持动态shape（my_generate自回归解码序列长度变化）
                                                  # 注意：reduce-overhead会启用CUDA Graphs，要求shape固定，与generate不兼容
     
-    # 🚀 新增：梯度优化
-    gradient_checkpointing: bool = True          # 🚀 启用梯度检查点，节省显存
-    gradient_clip_algo: str = "norm"              # 🚀 梯度裁剪算法
+    # 🔧 梯度优化（gradient_checkpointing在小数据集SFT中可能导致训练不稳定，已禁用）
+    gradient_checkpointing: bool = False         # 🔧 禁用梯度检查点，避免影响训练稳定性
+    gradient_clip_algo: str = "norm"              # 梯度裁剪算法
 
 
 # ===================================================================================
