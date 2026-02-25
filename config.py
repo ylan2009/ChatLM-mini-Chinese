@@ -326,7 +326,7 @@ class TrainConfigSFTUltra:
     - 训练速度：提升3-5倍
     - 数据加载：零等待
     """
-    epochs: int = 3                              # 小数据集训练3个epoch即可
+    epochs: int = 4                              # 小数据集训练4个epoch即可
     batch_size_per_gpu: int = 32                # 🚀 从24提升到32，充分利用GPU显存
     
     learn_rate: float = 5e-5                     # 学习率保持不变
