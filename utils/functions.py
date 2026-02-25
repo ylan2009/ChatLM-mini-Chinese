@@ -358,6 +358,11 @@ def save_model_config(config_dict: dict, file: str) -> None:
     # file = file.replace('\\', '/')
     # file = '{}/model_config.json'.format('/'.join(file.split('/')[0: -1]))
     
+    # 确保目录存在
+    save_dir = os.path.dirname(file)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+    
     with open(file, 'w', encoding='utf-8') as f:
         ujson.dump(config_dict, f, indent=4, ensure_ascii=False)
 

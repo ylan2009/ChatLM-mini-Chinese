@@ -10,7 +10,10 @@
     # 大数据集预训练（使用TrainConfigPretrainLarge配置 - 1000万数据，3×20G显存GPU）
     accelerate launch --multi_gpu --num_processes 3 ./train.py train --use_large_config=True
     
-    # SFT微调（使用TrainConfigSFT配置）
+    # SFT微调 - 快速验证（使用TrainConfigSFTFast配置 - 5k数据，推荐）⭐
+    accelerate launch --multi_gpu --num_processes 3 ./train.py train --is_finetune=True --use_fast_config=True
+    
+    # SFT微调 - 标准训练（使用TrainConfigSFT配置 - 10k数据）
     accelerate launch --multi_gpu --num_processes 2 ./train.py train --is_finetune=True
     
     # 预训练（自定义学习率和训练轮数）
@@ -27,6 +30,7 @@
     --is_keep_training: 是否从断点处加载状态继续训练（默认: False）
     --is_finetune: 是否微调，微调会冻结encoder和embedding（默认: False）
     --use_large_config: 是否使用TrainConfigPretrainLarge配置（大数据集预训练）（默认: False）
+    --use_fast_config: 是否使用TrainConfigSFTFast配置（快速SFT验证，5k数据）（默认: False）
     --epochs: 训练轮数，如果指定则覆盖TrainConfig中的默认值
     --learn_rate: 学习率，如果指定则覆盖TrainConfig中的默认值
                   注意：SFT微调时建议使用更小的学习率，如 1e-5
@@ -34,7 +38,7 @@
 
 import fire
 
-from config import TrainConfig, TrainConfigSFT, TrainConfigPretrainLarge, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTFast, TrainConfigPretrainLarge, T5ModelConfig
 from model.trainer import ChatTrainer
 
 
@@ -44,7 +48,7 @@ class TrainWrapper:
     def __init__(self):
         self.model_config = T5ModelConfig()
     
-    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_large_config: bool = False, **kwargs):
+    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_large_config: bool = False, use_fast_config: bool = False, **kwargs):
         """
         训练函数
         
@@ -52,6 +56,7 @@ class TrainWrapper:
             is_keep_training: 是否从断点继续训练
             is_finetune: 是否进行SFT微调
             use_large_config: 是否使用大数据集预训练配置（TrainConfigPretrainLarge）
+            use_fast_config: 是否使用快速SFT配置（TrainConfigSFTFast，5k数据）
             **kwargs: 其他参数（如epochs, learn_rate等）
         """
         # 根据参数选择配置
@@ -60,9 +65,14 @@ class TrainWrapper:
             print("使用 TrainConfigPretrainLarge 配置（大数据集预训练）")
             print("=" * 80)
             train_config = TrainConfigPretrainLarge()
+        elif use_fast_config:
+            print("=" * 80)
+            print("使用 TrainConfigSFTFast 配置（快速SFT验证 - 5k数据）")
+            print("=" * 80)
+            train_config = TrainConfigSFTFast()
         elif is_finetune:
             print("=" * 80)
-            print("使用 TrainConfigSFT 配置（SFT微调）")
+            print("使用 TrainConfigSFT 配置（标准SFT微调 - 10k数据）")
             print("=" * 80)
             train_config = TrainConfigSFT()
         else:
