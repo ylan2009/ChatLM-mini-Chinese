@@ -54,8 +54,9 @@ def main():
     project_root = Path(__file__).parent
     data_dir = project_root / 'data'
     
-    # 数据源：从 my_finetune_data_zh.parquet 单文件中拆分训练集和验证集
-    source_file = data_dir / 'my_finetune_data_zh.parquet'
+    # 数据源：分别从 sft_train_dataset 和 sft_valid_dataset 采样
+    train_source = data_dir / 'sft_train_dataset.parquet'
+    valid_source = data_dir / 'sft_valid_dataset.parquet'
     
     # 输出文件路径（匹配 TrainConfigSFTFast 配置）
     train_output = data_dir / 'sft_train_small_train.parquet'
@@ -68,31 +69,23 @@ def main():
     print("SFT数据集采样工具")
     print("=" * 60)
     
-    if not source_file.exists():
-        print(f"❌ 数据源文件不存在: {source_file}")
+    # ---- 处理训练集 ----
+    print(f"\n[1/2] 处理训练集...")
+    if not train_source.exists():
+        print(f"❌ 训练集数据源不存在: {train_source}")
         return
     
-    print(f"\n读取数据源: {source_file}")
-    df = pd.read_parquet(str(source_file))
-    total_size = len(df)
-    print(f"数据源总量: {total_size:,} 条")
+    train_df_src = pd.read_parquet(str(train_source))
+    total_train = len(train_df_src)
+    print(f"训练集数据源总量: {total_train:,} 条")
     
-    need_size = train_size + valid_size
-    if total_size < need_size:
-        print(f"⚠️  数据量不足 {need_size:,} 条，将按比例调整采样数量")
-        ratio = total_size / need_size
-        train_size = int(train_size * ratio)
-        valid_size = total_size - train_size
+    if total_train <= train_size:
+        print(f"⚠️  数据量不足，使用全部 {total_train:,} 条数据")
+        train_df = train_df_src
+    else:
+        train_df = train_df_src.sample(n=train_size, random_state=42)
+        print(f"✅ 成功采样 {len(train_df):,} 条数据 ({len(train_df)/total_train*100:.1f}%)")
     
-    # 先打乱数据，再按顺序切分，确保训练集和验证集不重叠
-    df_shuffled = df.sample(frac=1, random_state=42).reset_index(drop=True)
-    
-    train_df = df_shuffled.iloc[:train_size]
-    valid_df = df_shuffled.iloc[train_size:train_size + valid_size]
-    
-    # 保存训练集
-    print(f"\n[1/2] 处理训练集...")
-    print(f"训练集大小: {len(train_df):,} 条 ({len(train_df)/total_size*100:.1f}%)")
     train_df.to_parquet(str(train_output), index=False)
     print(f"✅ 已保存到: {train_output}")
     if 'prompt' in train_df.columns:
@@ -100,9 +93,23 @@ def main():
     if 'response' in train_df.columns:
         print(f"  - Response平均长度: {train_df['response'].str.len().mean():.0f} 字符")
     
-    # 保存验证集
+    # ---- 处理验证集 ----
     print(f"\n[2/2] 处理验证集...")
-    print(f"验证集大小: {len(valid_df):,} 条 ({len(valid_df)/total_size*100:.1f}%)")
+    if not valid_source.exists():
+        print(f"❌ 验证集数据源不存在: {valid_source}")
+        return
+    
+    valid_df_src = pd.read_parquet(str(valid_source))
+    total_valid = len(valid_df_src)
+    print(f"验证集数据源总量: {total_valid:,} 条")
+    
+    if total_valid <= valid_size:
+        print(f"⚠️  数据量不足，使用全部 {total_valid:,} 条数据")
+        valid_df = valid_df_src
+    else:
+        valid_df = valid_df_src.sample(n=valid_size, random_state=42)
+        print(f"✅ 成功采样 {len(valid_df):,} 条数据 ({len(valid_df)/total_valid*100:.1f}%)")
+    
     valid_df.to_parquet(str(valid_output), index=False)
     print(f"✅ 已保存到: {valid_output}")
     if 'prompt' in valid_df.columns:
