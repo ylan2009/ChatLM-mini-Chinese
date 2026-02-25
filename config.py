@@ -309,6 +309,78 @@ class TrainConfigSFTFast:
     max_seq_len: int = 512                       # 序列长度512
 
 
+@dataclass
+class TrainConfigSFTUltra:
+    """
+    超高性能SFT训练配置 - 针对56核CPU + 3×20GB GPU优化
+    
+    优化策略：
+    - 大幅增加batch_size：充分利用3个GPU的60GB显存
+    - 优化数据加载：56个CPU核心，num_workers=32
+    - 减少梯度累积：batch_size足够大，不需要太多累积
+    - 增大dataloader_buffer_size：充分利用内存
+    - 启用torch.compile：JIT编译优化
+    
+    预期效果：
+    - GPU利用率：90%+（当前只有24-33%）
+    - 训练速度：提升3-5倍
+    - 数据加载：零等待
+    """
+    epochs: int = 3                              # 小数据集训练3个epoch即可
+    batch_size_per_gpu: int = 32                # 🚀 从24提升到32，充分利用GPU显存
+    
+    learn_rate: float = 5e-5                     # 学习率保持不变
+    div_factor: int = 25                         # 保持不变
+
+    mixed_precision: str = "bf16"                # 混合精度训练
+
+    # 大幅减少梯度累积，因为batch_size已经很大
+    # 实际有效batch_size = 32 * 3(GPU) * 1 = 96
+    gradient_accumulation_steps: int = 1         # 🚀 从2降到1，减少内存占用
+
+    warmup_steps: int = 50                       # 小数据集减少warmup步数
+    
+    max_grad_norm: float = 1.0                   # 梯度裁剪
+
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
+    model_file: str = PROJECT_ROOT + '/model_save/sft_ultra/chat_small_t5.{}.bin'
+    model_config_file: str = PROJECT_ROOT + '/model_save/sft_ultra/model_config.json'
+    
+    # 使用prepare_small_sft_data.py生成的小数据集
+    train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_train_small_valid.parquet'  # 小数据集验证数据
+    test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
+
+    # 从预训练模型开始微调
+    finetune_from_ckp_file = PROJECT_ROOT + '/model_save/chat_small_t5.best.bin'
+
+    # 训练状态保存
+    train_state_dir: str = PROJECT_ROOT + '/model_save/sft_ultra/train_latest_state_sft_ultra'
+    output_dir: str = PROJECT_ROOT + '/model_save/sft_ultra'
+
+    # 5000样本，batch_size=32*3*1=96，每个epoch约52步
+    logging_steps: int = 10                      # 每个epoch约5次日志
+    save_steps: int = 52                         # 每个epoch保存1次
+    
+    keep_latest_n_ckp: int = 3                   # 小数据集只保留3个最好的模型
+
+    seed: int = 23333
+    dataloader_buffer_size: int = 50000          # 🚀 大幅增加buffer，充分利用56核CPU
+    max_seq_len: int = 512                       # 序列长度512
+    
+    # 🚀 新增：数据加载优化
+    dataloader_num_workers: int = 32             # 🚀 56核CPU，使用32个worker
+    dataloader_pin_memory: bool = True           # 🚀 启用内存锁定，加速GPU传输
+    
+    # 🚀 新增：编译优化
+    use_torch_compile: bool = True               # 🚀 启用torch.compile优化
+    compile_mode: str = "reduce-overhead"        # 🚀 编译模式：减少开销
+    
+    # 🚀 新增：梯度优化
+    gradient_checkpointing: bool = True          # 🚀 启用梯度检查点，节省显存
+    gradient_clip_algo: str = "norm"              # 🚀 梯度裁剪算法
+
+
 # ===================================================================================
 # 以下为大数据集预训练配置 - 针对3×20G显存GPU + 12G内存优化
 @dataclass

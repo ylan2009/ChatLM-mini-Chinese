@@ -23,7 +23,7 @@ from accelerate.utils import set_seed, InitProcessGroupKwargs
 from model.chat_model import TextToTextModel
 from utils.logger import Logger
 from model.dataset import MyDataset
-from config import TrainConfig, TrainConfigSFT, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTUltra, T5ModelConfig
 from utils.functions import (
     get_bleu4_score, 
     save_model_config, 
@@ -290,18 +290,27 @@ class ChatTrainer:
 
         # args for dataloader
         # 启用num_workers加速数据加载，减少GPU等待时间
-        num_workers = 0
-        if not self.is_win_platform:
-            cpu_cnt = cpu_count(logical=False)
-            gpu_cnt = torch.cuda.device_count()
-            # 内存紧张时减少worker数量：每个worker会fork进程，占用额外内存
-            # 3个DDP进程 × num_workers 个子进程 = 大量内存开销
-            if unuse_mem < 8.0:
-                num_workers = 0  # 内存极度紧张（<8GB），禁用多进程加载
-            elif unuse_mem >= 24.0:
-                num_workers = min(4, cpu_cnt) if cpu_cnt > 0 else 2  # 内存充足（>=24GB），使用4个worker
-            else:
-                num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
+        # 优先使用配置中的num_workers，如果没有则自动计算
+        if hasattr(train_config, 'dataloader_num_workers') and train_config.dataloader_num_workers > 0:
+            num_workers = train_config.dataloader_num_workers
+            if accelerator.is_main_process:
+                log.info(f'使用配置的num_workers: {num_workers}', save_to_file=True)
+        else:
+            num_workers = 0
+            if not self.is_win_platform:
+                cpu_cnt = cpu_count(logical=False)
+                gpu_cnt = torch.cuda.device_count()
+                # 内存紧张时减少worker数量：每个worker会fork进程，占用额外内存
+                # 3个DDP进程 × num_workers 个子进程 = 大量内存开销
+                if unuse_mem < 8.0:
+                    num_workers = 0  # 内存极度紧张（<8GB），禁用多进程加载
+                elif unuse_mem >= 24.0:
+                    num_workers = min(4, cpu_cnt) if cpu_cnt > 0 else 2  # 内存充足（>=24GB），使用4个worker
+                else:
+                    num_workers = min(2, gpu_cnt) if gpu_cnt > 0 else 1
+        
+        # 使用配置的pin_memory设置，如果没有则默认True
+        pin_memory = getattr(train_config, 'dataloader_pin_memory', True)
 
         train_dataset = MyDataset(
             parquet_file=train_config.train_file,
@@ -332,7 +341,7 @@ class ChatTrainer:
             batch_size=batch_size,  
             shuffle=True,
             collate_fn=train_dataset.collate_fn,
-            pin_memory=True,
+            pin_memory=pin_memory,
             num_workers=num_workers,
             persistent_workers=use_persistent,
             prefetch_factor=prefetch,
@@ -342,7 +351,7 @@ class ChatTrainer:
             batch_size=eval_batch_size,
             shuffle=False,
             collate_fn=valid_dataset.collate_fn,
-            pin_memory=True,
+            pin_memory=pin_memory,
             num_workers=num_workers,
             persistent_workers=use_persistent,
             prefetch_factor=prefetch,
@@ -390,6 +399,12 @@ class ChatTrainer:
             if accelerator.is_main_process:
                 log.info(f'SFT微调: 冻结embedding和encoder，只训练decoder', save_to_file=True)
                 log.info(f'可训练参数: {trainable_params:,} / 总参数: {total_params:,} ({100*trainable_params/total_params:.2f}%)', save_to_file=True)
+        
+        # 启用梯度检查点（节省显存，允许更大的batch_size）
+        if hasattr(train_config, 'gradient_checkpointing') and train_config.gradient_checkpointing:
+            if accelerator.is_main_process:
+                log.info('启用梯度检查点，节省显存，允许更大的batch_size...', save_to_file=True)
+            model.gradient_checkpointing_enable()
 
         # 保存模型配置，方便修改配置后恢复
         save_model_config(t5_config.to_diff_dict(), train_config.model_config_file)
@@ -587,11 +602,15 @@ class ChatTrainer:
         # in OptimizedModule, which adds '_orig_mod.' prefix to all state_dict keys
         # and breaks checkpoint save/load compatibility.
         if hasattr(torch, 'compile'):
-            if accelerator.is_main_process:
-                log.info('Applying torch.compile to model forward for faster training...', save_to_file=True)
-            # Get the underlying model (unwrap DDP/accelerate wrappers)
-            unwrapped = accelerator.unwrap_model(model)
-            unwrapped.forward = torch.compile(unwrapped.forward)
+            # 使用配置中的torch.compile设置
+            use_compile = getattr(train_config, 'use_torch_compile', False)
+            if use_compile:
+                compile_mode = getattr(train_config, 'compile_mode', 'reduce-overhead')
+                if accelerator.is_main_process:
+                    log.info(f'Applying torch.compile to model forward for faster training (mode: {compile_mode})...', save_to_file=True)
+                # Get the underlying model (unwrap DDP/accelerate wrappers)
+                unwrapped = accelerator.unwrap_model(model)
+                unwrapped.forward = torch.compile(unwrapped.forward, mode=compile_mode)
 
         self.model = model
         self.accelerator = accelerator
@@ -675,7 +694,14 @@ class ChatTrainer:
 
                 # 梯度累计
                 if (step + 1) % accumulation_steps == 0:
-                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                    # 使用配置的梯度裁剪算法
+                    clip_algo = getattr(train_config, 'gradient_clip_algo', 'norm')
+                    if clip_algo == 'norm':
+                        accelerator.clip_grad_norm_(model.parameters(), train_config.max_grad_norm)
+                    elif clip_algo == 'value':
+                        accelerator.clip_grad_value_(model.parameters(), train_config.max_grad_norm)
+                    else:
+                        accelerator.clip_grad_norm_(model.parameters(), train_config.max_grad_norm)
                 
                     optimizer.step()
                     lr_scheduler.step()

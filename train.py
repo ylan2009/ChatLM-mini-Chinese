@@ -4,11 +4,20 @@
 训练脚本 - 支持预训练和SFT微调
 
 使用方法：
+
+    先执行：
+    export ACCELERATE_USE_GLOO=1
+
+    export NCCL_SHM_DISABLE=1
+
     # 预训练（使用默认配置）
     accelerate launch --multi_gpu --num_processes 2 ./train.py train
     
     # 大数据集预训练（使用TrainConfigPretrainLarge配置 - 1000万数据，3×20G显存GPU）
     accelerate launch --multi_gpu --num_processes 3 ./train.py train --use_large_config=True
+    
+    # SFT微调 - 超高性能（使用TrainConfigSFTUltra配置 - 56核CPU+3GPU优化）🚀
+    accelerate launch --multi_gpu --num_processes 3 ./train.py train --is_finetune=True --use_ultra_config=True
     
     # SFT微调 - 快速验证（使用TrainConfigSFTFast配置 - 5k数据，推荐）⭐
     accelerate launch --multi_gpu --num_processes 3 ./train.py train --is_finetune=True --use_fast_config=True
@@ -31,6 +40,7 @@
     --is_finetune: 是否微调，微调会冻结encoder和embedding（默认: False）
     --use_large_config: 是否使用TrainConfigPretrainLarge配置（大数据集预训练）（默认: False）
     --use_fast_config: 是否使用TrainConfigSFTFast配置（快速SFT验证，5k数据）（默认: False）
+    --use_ultra_config: 是否使用TrainConfigSFTUltra配置（超高性能，56核CPU+3GPU优化）（默认: False）
     --epochs: 训练轮数，如果指定则覆盖TrainConfig中的默认值
     --learn_rate: 学习率，如果指定则覆盖TrainConfig中的默认值
                   注意：SFT微调时建议使用更小的学习率，如 1e-5
@@ -38,7 +48,7 @@
 
 import fire
 
-from config import TrainConfig, TrainConfigSFT, TrainConfigSFTFast, TrainConfigPretrainLarge, T5ModelConfig
+from config import TrainConfig, TrainConfigSFT, TrainConfigSFTFast, TrainConfigSFTUltra, TrainConfigPretrainLarge, T5ModelConfig
 from model.trainer import ChatTrainer
 
 
@@ -48,7 +58,7 @@ class TrainWrapper:
     def __init__(self):
         self.model_config = T5ModelConfig()
     
-    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_large_config: bool = False, use_fast_config: bool = False, **kwargs):
+    def train(self, is_keep_training: bool = False, is_finetune: bool = False, use_large_config: bool = False, use_fast_config: bool = False, use_ultra_config: bool = False, **kwargs):
         """
         训练函数
         
@@ -57,10 +67,16 @@ class TrainWrapper:
             is_finetune: 是否进行SFT微调
             use_large_config: 是否使用大数据集预训练配置（TrainConfigPretrainLarge）
             use_fast_config: 是否使用快速SFT配置（TrainConfigSFTFast，5k数据）
+            use_ultra_config: 是否使用超高性能SFT配置（TrainConfigSFTUltra，56核CPU+3GPU优化）
             **kwargs: 其他参数（如epochs, learn_rate等）
         """
         # 根据参数选择配置
-        if use_large_config:
+        if use_ultra_config:
+            print("=" * 80)
+            print("使用 TrainConfigSFTUltra 配置（超高性能 - 56核CPU+3GPU优化）🚀")
+            print("=" * 80)
+            train_config = TrainConfigSFTUltra()
+        elif use_large_config:
             print("=" * 80)
             print("使用 TrainConfigPretrainLarge 配置（大数据集预训练）")
             print("=" * 80)
