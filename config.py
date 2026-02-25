@@ -327,7 +327,7 @@ class TrainConfigSFTUltra:
     - 数据加载：零等待
     """
     epochs: int = 4                              # 小数据集训练4个epoch即可
-    batch_size_per_gpu: int = 24                # 🚀 从24提升到32，充分利用GPU显存
+    batch_size_per_gpu: int = 24                # 
     
     learn_rate: float = 5e-5                     # 学习率保持不变
     div_factor: int = 25                         # 保持不变
@@ -374,7 +374,8 @@ class TrainConfigSFTUltra:
     
     # 🚀 新增：编译优化
     use_torch_compile: bool = True               # 🚀 启用torch.compile优化
-    compile_mode: str = "reduce-overhead"        # 🚀 编译模式：减少开销
+    compile_mode: str = "default"                # 🚀 编译模式：default支持动态shape（my_generate自回归解码序列长度变化）
+                                                 # 注意：reduce-overhead会启用CUDA Graphs，要求shape固定，与generate不兼容
     
     # 🚀 新增：梯度优化
     gradient_checkpointing: bool = True          # 🚀 启用梯度检查点，节省显存
