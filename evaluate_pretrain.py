@@ -10,6 +10,12 @@
     4. 生成详细的评估报告
 
 使用方法：
+
+
+    需要先执行命令：
+    export ACCELERATE_USE_GLOO=1
+    export NCCL_SHM_DISABLE=1
+    
     # 单GPU评估（使用默认配置）
     python evaluate_pretrain.py
     
@@ -154,7 +160,7 @@ class PretrainEvaluator:
             shuffle=False,
             collate_fn=valid_dataset.collate_fn,
             pin_memory=True,
-            num_workers=0,
+            num_workers=4,  # 启用多线程数据加载
         )
         
         if accelerator.is_main_process:
@@ -174,6 +180,10 @@ class PretrainEvaluator:
         
         model = TextToTextModel(t5_config)
         model.load_state_dict(torch.load(model_file, map_location='cpu'))
+        
+        # 使用torch.compile优化推理速度（PyTorch 2.0+）
+        if hasattr(torch, 'compile') and accelerator.is_main_process:
+            self.logger.info('启用torch.compile优化...', save_to_file=True)
         
         # Prepare model and dataloader
         model, valid_dataloader = accelerator.prepare(model, valid_dataloader)
