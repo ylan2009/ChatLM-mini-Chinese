@@ -17,7 +17,7 @@ from torch_optimizer import Adafactor
 # import accelerate
 import datetime
 from accelerate import Accelerator
-from accelerate.utils import set_seed, InitProcessGroupKwargs
+from accelerate.utils import set_seed, InitProcessGroupKwargs, DistributedDataParallelKwargs
 
 # import 自定义类和函数
 from model.chat_model import TextToTextModel
@@ -243,11 +243,18 @@ class ChatTrainer:
         # Increase NCCL timeout to 1 hour to prevent evaluate phase timeout
         nccl_timeout_kwargs = InitProcessGroupKwargs(timeout=datetime.timedelta(seconds=3600))
 
+        # 微调时冻结了 encoder/embedding 参数，DDP 需要设置 find_unused_parameters=True
+        # 否则 DDP 会因为检测到有参数没有收到梯度而报错
+        kwargs_handlers = [nccl_timeout_kwargs]
+        if is_finetune:
+            ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+            kwargs_handlers.append(ddp_kwargs)
+
         accelerator = Accelerator(
             mixed_precision=train_config.mixed_precision,       # 混合精度
             gradient_accumulation_steps=accumulation_steps,     # 梯度累积
             project_dir=train_config.train_state_dir,
-            kwargs_handlers=[nccl_timeout_kwargs],
+            kwargs_handlers=kwargs_handlers,
         )
 
         # 根据剩余内存大小决定是否完全加载数据集到内存中
