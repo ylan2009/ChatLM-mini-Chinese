@@ -25,8 +25,8 @@
 # Format: HH:MM (24-hour, Beijing time)
 # The script will start training at START_TIME and stop at END_TIME each day.
 # Supports overnight windows, e.g. START_TIME="22:00" END_TIME="08:00"
-START_TIME="10:48"
-END_TIME="20:00"
+START_TIME="9:00"
+END_TIME="21:00"
 
 # --- Training Configuration ---
 NUM_PROCESSES=3                          # Number of GPUs
