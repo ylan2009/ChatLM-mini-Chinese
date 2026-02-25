@@ -32,7 +32,7 @@ END_TIME="21:00"
 NUM_PROCESSES=3                          # Number of GPUs
 TRAIN_SCRIPT="./train.py"               # Training script path
 TRAIN_ARGS_NORMAL="train"                # Normal training arguments
-TRAIN_ARGS_FINETUNE="train --is_finetune=True --use_fast_config=True"  # SFT finetune arguments
+TRAIN_ARGS_FINETUNE="train --is_finetune=True --use_ultra_config=True"  # SFT finetune arguments
 TRAIN_ARGS="${TRAIN_ARGS_NORMAL}"        # Active training arguments (set by mode, do not edit)
 STATE_DIR_NORMAL="./model_save/train_latest_state"      # Checkpoint dir for normal training
 STATE_DIR_FINETUNE="./model_save/sft_latest_state"      # Checkpoint dir for SFT finetune
@@ -161,6 +161,8 @@ start_training() {
 
     # Launch training in background with its own process group, redirect output to log
     cd "${SCRIPT_DIR}"
+    export ACCELERATE_USE_GLOO=1
+    export NCCL_SHM_DISABLE=1
     setsid ${cmd} >> "${train_log}" 2>&1 &
     TRAIN_PID=$!
 
