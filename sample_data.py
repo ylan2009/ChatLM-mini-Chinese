@@ -56,34 +56,34 @@ def main():
     
     # 输入输出文件路径
     train_input = data_dir / 'sft_train_dataset.parquet'
-    train_output = data_dir / 'sft_train_dataset_10k.parquet'
+    train_output = data_dir / 'sft_train_small_train.parquet'  # 匹配TrainConfigSFTFast配置
     
     valid_input = data_dir / 'sft_valid_dataset.parquet'
-    valid_output = data_dir / 'sft_valid_dataset_1k.parquet'
+    valid_output = data_dir / 'sft_train_small_valid.parquet'  # 匹配TrainConfigSFTFast配置
     
     print("=" * 60)
     print("SFT数据集采样工具")
     print("=" * 60)
     
-    # 采样训练集（10000条）
+    # 采样训练集（5000条 - 快速验证）
     if train_input.exists():
         print("\n[1/2] 处理训练集...")
         sample_dataset(
             input_file=str(train_input),
             output_file=str(train_output),
-            sample_size=10000,
+            sample_size=5000,  # 改为5000条，快速验证SFT效果
             random_state=42
         )
     else:
         print(f"❌ 训练集文件不存在: {train_input}")
     
-    # 采样验证集（1000条）
+    # 采样验证集（500条）
     if valid_input.exists():
         print("\n[2/2] 处理验证集...")
         sample_dataset(
             input_file=str(valid_input),
             output_file=str(valid_output),
-            sample_size=1000,
+            sample_size=500,  # 改为500条
             random_state=42
         )
     else:

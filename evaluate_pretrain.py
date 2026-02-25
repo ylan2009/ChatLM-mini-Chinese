@@ -15,6 +15,10 @@
     需要先执行命令：
     export ACCELERATE_USE_GLOO=1
     export NCCL_SHM_DISABLE=1
+
+    accelerate launch --multi_gpu --num_processes 3 ./evaluate_pretrain.py \
+    --batch_size=128 \
+    --search_type=greedy 
     
     # 单GPU评估（使用默认配置）
     python evaluate_pretrain.py
