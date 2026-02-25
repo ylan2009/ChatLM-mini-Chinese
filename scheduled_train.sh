@@ -8,7 +8,8 @@
 #
 # Usage:
 #   chmod +x scheduled_train.sh
-#   ./scheduled_train.sh              # Start the scheduler
+#   ./scheduled_train.sh              # Start the scheduler (normal training)
+#   ./scheduled_train.sh finetune     # Start the scheduler (SFT finetune mode)
 #   ./scheduled_train.sh pause        # Pause: stop current training and hold
 #   ./scheduled_train.sh resume       # Resume: continue scheduled training
 #   ./scheduled_train.sh status       # Show current scheduler status
@@ -30,7 +31,9 @@ END_TIME="20:00"
 # --- Training Configuration ---
 NUM_PROCESSES=3                          # Number of GPUs
 TRAIN_SCRIPT="./train.py"               # Training script path
-TRAIN_ARGS="train"                       # Base training arguments (--is_keep_training is auto-detected)
+TRAIN_ARGS_NORMAL="train"                # Normal training arguments
+TRAIN_ARGS_FINETUNE="train --is_finetune=True --use_fast_config=True"  # SFT finetune arguments
+TRAIN_ARGS="${TRAIN_ARGS_NORMAL}"        # Active training arguments (set by mode, do not edit)
 STATE_DIR="./model_save/train_latest_state"  # Checkpoint state directory (used to auto-detect resume)
 
 # --- Advanced Configuration ---
@@ -347,7 +350,20 @@ handle_subcommand() {
 
 # If a subcommand is given, handle it and exit
 if [ $# -gt 0 ]; then
-    handle_subcommand "$1"
+    case "$1" in
+        finetune)
+            # SFT finetune mode: set TRAIN_ARGS and start scheduler
+            TRAIN_ARGS="${TRAIN_ARGS_FINETUNE}"
+            ;;
+        pause|resume|status|stop)
+            handle_subcommand "$1"
+            ;;
+        *)
+            echo "Unknown command: $1"
+            echo "Usage: $0 [finetune|pause|resume|status|stop]"
+            exit 1
+            ;;
+    esac
 fi
 
 # --- Main Loop ---
