@@ -253,21 +253,20 @@ class TrainConfigSFTFast:
     高性能SFT训练配置 - 充分利用GPU显存（20GB × 2）
     
     推荐数据量：
-    - 训练集：5,000样本
-    - 验证集：500样本
+    - 训练集：50,000样本
+    - 验证集：2,000样本
     
     优化策略：
-    - 增大batch_size：从1提升到16（充分利用GPU显存）
+    - 增大batch_size：从1提升到24（充分利用GPU显存）
     - 减少梯度累积：从8降到2（减少内存占用）
-    - 实际有效batch_size = 16 * 2(GPU) * 2 = 64（比原来的16大4倍）
+    - 实际有效batch_size = 24 * 2(GPU) * 2 = 96
     - 增加num_workers：加速数据加载
     
     预期内存占用：10-14GB（双GPU）
-    预期GPU显存占用：12-16GB/GPU（提升6-8倍）
-    预期训练速度：提升5-6倍
+    预期GPU显存占用：12-16GB/GPU
     """
-    epochs: int = 3                              # 小数据集训练3-5个epoch即可
-    batch_size_per_gpu: int = 24                # 🚀 从1提升到16，充分利用GPU显存
+    epochs: int = 5                              # 50k数据集训练5个epoch
+    batch_size_per_gpu: int = 24                # 充分利用GPU显存
     
     learn_rate: float = 5e-5                     # 学习率保持不变
     div_factor: int = 25                         # 保持不变
@@ -278,7 +277,7 @@ class TrainConfigSFTFast:
     # 实际有效batch_size = 16 * 2(GPU) * 2 = 64
     gradient_accumulation_steps: int = 2         # 🚀 从8降到2，减少内存占用
 
-    warmup_steps: int = 100                      # 小数据集减少warmup步数
+    warmup_steps: int = 300                      # 50k数据集适当增加warmup步数
     
     max_grad_norm: float = 1.0                   # 梯度裁剪
 
@@ -286,9 +285,9 @@ class TrainConfigSFTFast:
     model_file: str = PROJECT_ROOT + '/model_save/sft_fast/chat_small_t5.{}.bin'
     model_config_file: str = PROJECT_ROOT + '/model_save/sft_fast/model_config.json'
     
-    # 使用prepare_small_sft_data.py生成的小数据集
-    train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 小数据集训练数据
-    validation_file: str = PROJECT_ROOT + '/data/sft_train_small_valid.parquet'  # 小数据集验证数据
+    # 使用sample_data.py生成的数据集（50k训练 + 2k验证）
+    train_file: str = PROJECT_ROOT + '/data/sft_train_small_train.parquet'      # 50k训练数据
+    validation_file: str = PROJECT_ROOT + '/data/sft_train_small_valid.parquet'  # 2k验证数据
     test_file: str = PROJECT_ROOT + '/data/sft_test_dataset.parquet'
 
     # 从预训练模型开始微调
@@ -298,14 +297,14 @@ class TrainConfigSFTFast:
     train_state_dir: str = PROJECT_ROOT + '/model_save/sft_fast/train_latest_state_sft_fast'
     output_dir: str = PROJECT_ROOT + '/model_save/sft_fast'
 
-    # 5000样本，batch_size=16*2*2=64，每个epoch约78步（比原来的312步快4倍）
-    logging_steps: int = 15                      # 每个epoch约5次日志
-    save_steps: int = 78                         # 每个epoch保存1次
+    # 50000样本，batch_size=24*2*2=96，每个epoch约521步
+    logging_steps: int = 100                     # 每个epoch约5次日志
+    save_steps: int = 521                        # 每个epoch保存1次
     
-    keep_latest_n_ckp: int = 3                   # 小数据集只保留3个最好的模型
+    keep_latest_n_ckp: int = 3                   # 只保留3个最好的模型
 
     seed: int = 23333
-    dataloader_buffer_size: int = 10000          # 减小buffer
+    dataloader_buffer_size: int = 50000          # 扩大buffer匹配数据量
     max_seq_len: int = 512                       # 序列长度512
 
 
