@@ -46,6 +46,7 @@ class TextToTextModel(T5ForConditionalGeneration):
             generation_config.num_beams = 1
             generation_config.do_sample = False
             generation_config.no_repeat_ngram_size = 4  # 禁止重复4-gram
+            generation_config.length_penalty = 0.6      # 惩罚长序列，鼓励模型尽早停止
         elif search_type == 'beam':
             generation_config.top_k = 50
             generation_config.num_beams = 5
