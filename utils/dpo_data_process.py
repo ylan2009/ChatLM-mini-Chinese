@@ -792,6 +792,18 @@ def merge_rlhf_data(max_len: int=512) -> None:
                     'chosen': replace_line(chosen),
                     'rejected': replace_line(rejected),
             })
+
+    # 去重：过滤 (prompt, chosen, rejected) 三元组完全相同的条目
+    seen = set()
+    dedup_data = []
+    for item in my_data:
+        key = (item['prompt'], item['chosen'], item['rejected'])
+        if key not in seen:
+            seen.add(key)
+            dedup_data.append(item)
+    print(f'去重后: {len(dedup_data)} 条（原始 {len(my_data)} 条）')
+    my_data = dedup_data
+
     print('length of {} is {}'.format(save_file, len(my_data)))
 
     with open(save_file, 'w', encoding='utf-8') as f:
