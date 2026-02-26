@@ -367,6 +367,10 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
     batch_prompts = []
     batch_items = []
     processed_count = 0
+    # 动态 max_seq_len：OOM 时会自动缩小，处理完一个 batch 后恢复
+    MAX_PROMPT_LEN = 256   # prompt 编码后最大 token 数，超过则截断
+    MAX_GEN_LEN = max_len  # 生成部分最大 token 数
+    MAX_TOTAL_LEN = MAX_PROMPT_LEN + MAX_GEN_LEN  # 生成时总长度上限
 
     for idx, item in enumerate(data_chunk):
         prompt = item["prompt"]
@@ -382,14 +386,15 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
             encoded = tokenizer.batch_encode_plus(
                 batch_prompts,
                 truncation=True,
-                max_length=infer_config.max_seq_len,
+                max_length=MAX_PROMPT_LEN,   # 限制 prompt 最大长度，防止 KV cache 爆显存
                 padding=True,
             )
 
-            # OOM 自动降级重试：batch_size 减半，最多重试 3 次
+            # OOM 自动降级重试：batch_size 减半 + max_gen_len 缩短，最多重试 4 次
             cur_batch_size = len(batch_prompts)
+            cur_gen_len = MAX_GEN_LEN
             decoded = None
-            for retry in range(4):
+            for retry in range(5):
                 try:
                     with torch.no_grad():
                         # 将当前 batch 按 cur_batch_size 切片逐块推理，再拼接
@@ -403,7 +408,7 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                             sub_outputs = model.my_generate(
                                 input_ids=sub_input_ids,
                                 attention_mask=sub_attn_mask,
-                                max_seq_len=sub_input_ids.shape[1] + max_len,
+                                max_seq_len=sub_input_ids.shape[1] + cur_gen_len,
                                 search_type="sampling",
                                 temperature=1.2,
                                 top_p=0.95,
@@ -420,13 +425,20 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                     break  # 成功，跳出重试循环
                 except torch.cuda.OutOfMemoryError:
                     torch.cuda.empty_cache()
-                    if cur_batch_size <= 1:
-                        print(f"GPU {gpu_id}: batch_size=1 仍然 OOM，跳过当前 batch")
+                    if cur_batch_size <= 1 and cur_gen_len <= 64:
+                        print(f"GPU {gpu_id}: batch_size=1, gen_len={cur_gen_len} 仍然 OOM，跳过当前 batch")
                         decoded = None
                         break
                     old_size = cur_batch_size
-                    cur_batch_size = max(1, cur_batch_size // 2)
-                    print(f"GPU {gpu_id}: OOM！batch_size {old_size} -> {cur_batch_size}，重试...")
+                    old_gen = cur_gen_len
+                    # 优先降低 batch_size，batch_size=1 后再缩短 gen_len
+                    if cur_batch_size > 1:
+                        cur_batch_size = max(1, cur_batch_size // 2)
+                    else:
+                        cur_gen_len = max(64, cur_gen_len // 2)
+                    print(f"GPU {gpu_id}: OOM！batch_size {old_size}->{cur_batch_size}, gen_len {old_gen}->{cur_gen_len}，重试 {retry+1}...")
+                    import gc; gc.collect()
+                    torch.cuda.empty_cache()
             
             if decoded is None:
                 # 整个 batch 都失败，跳过
