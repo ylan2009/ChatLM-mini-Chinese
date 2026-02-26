@@ -42,7 +42,7 @@ class InferConfig:
 @dataclass
 class DpoConfig:
     max_seq_len: int = 512 + 8                  # 8 for eos token 
-    sft_model_file: str = PROJECT_ROOT + '/model_save/sft_ultra/'
+    sft_model_file: str = PROJECT_ROOT + '/model_save/sft_ultra/chat_small_t5.best.bin'
 
     tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'   # tokenizer一般和model权重放在同一个文件夹
 
