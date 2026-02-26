@@ -107,7 +107,7 @@ def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
         max_length=config.max_seq_len,
         max_target_length=config.max_seq_len,
         max_prompt_length=config.max_seq_len,
-        generate_during_eval=True,
+        generate_during_eval=False,
         is_encoder_decoder=True,
     )
 
