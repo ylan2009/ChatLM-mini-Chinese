@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import torch
 from datasets import Dataset, load_dataset
-from transformers import PreTrainedTokenizerFast, TrainingArguments
+from transformers import AutoTokenizer, TrainingArguments
 from trl import DPOTrainer
 from tokenizers import Tokenizer
 from peft import LoraConfig, TaskType, PeftModel
@@ -47,7 +47,7 @@ def get_dataset(split: str, file: str, cache_dir: str = '.cache') -> Dataset:
 def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
 
     # step 1. 加载tokenizer
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(config.tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_dir)
     
     # step 2. 加载预训练模型
     model_train, model_ref = None, None 
@@ -133,7 +133,7 @@ def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
 def merge_lora_weight_into_model(config: DpoConfig, peft_config: LoraConfig) -> None:
 
     # step 1. 加载tokenizer
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(config.tokenizer_dir)
+    tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_dir)
     
     # step 2. 加载预训练模型
     sft_model = None
