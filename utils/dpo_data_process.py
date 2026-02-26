@@ -492,8 +492,8 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
         # 如果没有找到SFT模型，使用默认配置（可能是DPO后的模型或其他）
         print(f'未找到SFT模型 {sft_model_path}，使用默认配置: {infer_config.model_dir}')
         if infer_config.tokenizer_dir is None:
-            # 如果默认配置也没有指定tokenizer_dir，尝试使用my_tokenizer_wiki
-                default_tokenizer = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
+            # 如果默认配置也没有指定tokenizer_dir，尝试使用my_tokenizer_sp
+            default_tokenizer = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
             if os.path.exists(default_tokenizer):
                 infer_config.tokenizer_dir = default_tokenizer
                 print(f'使用默认tokenizer: {infer_config.tokenizer_dir}')
