@@ -386,26 +386,57 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                 padding=True,
             )
 
-            with torch.no_grad():
-                input_ids = torch.LongTensor(encoded.input_ids).to(device)
-                attention_mask = torch.LongTensor(encoded.attention_mask).to(device)
+            # OOM 自动降级重试：batch_size 减半，最多重试 3 次
+            cur_batch_size = len(batch_prompts)
+            decoded = None
+            for retry in range(4):
+                try:
+                    with torch.no_grad():
+                        # 将当前 batch 按 cur_batch_size 切片逐块推理，再拼接
+                        all_outputs = []
+                        input_ids_full = torch.LongTensor(encoded.input_ids)
+                        attn_mask_full = torch.LongTensor(encoded.attention_mask)
+                        for start in range(0, len(batch_prompts), cur_batch_size):
+                            end = start + cur_batch_size
+                            sub_input_ids = input_ids_full[start:end].to(device)
+                            sub_attn_mask = attn_mask_full[start:end].to(device)
+                            sub_outputs = model.my_generate(
+                                input_ids=sub_input_ids,
+                                attention_mask=sub_attn_mask,
+                                max_seq_len=sub_input_ids.shape[1] + max_len,
+                                search_type="sampling",
+                                temperature=1.2,
+                                top_p=0.95,
+                            )
+                            all_outputs.append(sub_outputs.detach().cpu())
+                            del sub_input_ids, sub_attn_mask, sub_outputs
+                            torch.cuda.empty_cache()
+                        outputs = torch.cat(all_outputs, dim=0)
+                    decoded = tokenizer.batch_decode(
+                        outputs.numpy(),
+                        clean_up_tokenization_spaces=True,
+                        skip_special_tokens=True,
+                    )
+                    break  # 成功，跳出重试循环
+                except torch.cuda.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    if cur_batch_size <= 1:
+                        print(f"GPU {gpu_id}: batch_size=1 仍然 OOM，跳过当前 batch")
+                        decoded = None
+                        break
+                    old_size = cur_batch_size
+                    cur_batch_size = max(1, cur_batch_size // 2)
+                    print(f"GPU {gpu_id}: OOM！batch_size {old_size} -> {cur_batch_size}，重试...")
+            
+            if decoded is None:
+                # 整个 batch 都失败，跳过
+                processed_count += len(batch_items)
+                batch_prompts = []
+                batch_items = []
+                progress_queue.put((gpu_id, processed_count, len(chunk_items)))
+                continue
 
-                # reject 不需要"最好"，但需要"相关且差一些"：提高 temperature 和 top_p 增加随机性，使生成质量稍差
-                outputs = model.my_generate(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    max_seq_len=input_ids.shape[1] + max_len,
-                    search_type="sampling",
-                    temperature=1.2,
-                    top_p=0.95,
-                )
-            decoded = tokenizer.batch_decode(
-                outputs.detach().cpu().numpy(),
-                clean_up_tokenization_spaces=True,
-                skip_special_tokens=True,
-            )
-
-            for src_item, reject, input_id_seq in zip(batch_items, decoded, input_ids):
+            for src_item, reject in zip(batch_items, decoded):
                 cur_prompt = src_item["prompt"]
                 cur_chosen = src_item["chosen"]
                 
@@ -962,7 +993,7 @@ if __name__ == '__main__':
     # generate_alpaca_gpt4_reject_by_strategy(groups_cnt=500, strategy='mixed')
     
     # 方法2：使用模型生成（需要SFT模型训练良好）
-    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=256)
+    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=64)
 
     # # 合并数据集
     merge_rlhf_data()
