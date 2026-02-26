@@ -247,13 +247,33 @@ def compare_models(search_type: str) -> None:
         if user_input.lower() == 'exit':
             break
 
+        def generate(bot, text):
+            if search_type == 'greedy':
+                return bot.chat(text)
+            import torch
+            encoded = bot.batch_encode_plus([text + '[EOS]'], padding=True, add_special_tokens=False)
+            input_ids = torch.LongTensor(encoded.input_ids).to(bot.device)
+            attention_mask = torch.LongTensor(encoded.attention_mask).to(bot.device)
+            outputs = bot.model.my_generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_seq_len=bot.infer_config.max_seq_len,
+                search_type=search_type,
+            )
+            resp = bot.batch_decode(
+                outputs.cpu().numpy(),
+                clean_up_tokenization_spaces=True,
+                skip_special_tokens=True,
+            )[0]
+            return resp if resp else "（无输出）"
+
         # 预训练模型回答
         t0 = time.time()
-        pretrain_resp = pretrain_bot.chat(user_input)
+        pretrain_resp = generate(pretrain_bot, user_input)
         t1 = time.time()
 
         # SFT 模型回答
-        sft_resp = sft_bot.chat(user_input)
+        sft_resp = generate(sft_bot, user_input)
         t2 = time.time()
 
         print(f"\n\033[0;34m[预训练模型]\033[0m {pretrain_resp}  \033[0;90m({t1-t0:.2f}s)\033[0m")
