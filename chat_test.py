@@ -88,6 +88,7 @@ def load_model(model_key: str, search_type: str) -> tuple:
     infer_config = InferConfig()
     infer_config.model_dir = model_path
     infer_config.tokenizer_dir = tokenizer_path
+    infer_config.max_seq_len = 128  # 限制最大生成长度，避免回答过长
 
     t0 = time.time()
     bot = ChatBot(infer_config=infer_config)

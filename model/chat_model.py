@@ -52,7 +52,7 @@ class TextToTextModel(T5ForConditionalGeneration):
             generation_config.do_sample = True
             generation_config.top_p = 0.95
             generation_config.no_repeat_ngram_size = 4
-            generation_config.length_penalty = -2.0
+            generation_config.length_penalty = 1.2   # 正值惩罚长序列，鼓励模型尽早停止
             generation_config.early_stopping = True
         elif search_type == 'sampling':
             generation_config.num_beams = 1
