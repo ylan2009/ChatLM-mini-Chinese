@@ -34,8 +34,8 @@ TRAIN_SCRIPT="./train.py"               # Training script path
 TRAIN_ARGS_NORMAL="train"                # Normal training arguments
 TRAIN_ARGS_FINETUNE="train --is_finetune=True --use_ultra_config=True"  # SFT finetune arguments
 TRAIN_ARGS="${TRAIN_ARGS_NORMAL}"        # Active training arguments (set by mode, do not edit)
-STATE_DIR_NORMAL="./model_save/train_latest_state"      # Checkpoint dir for normal training
-STATE_DIR_FINETUNE="./model_save/sft_latest_state"      # Checkpoint dir for SFT finetune
+STATE_DIR_NORMAL="./model_save/train_latest_state"                          # Checkpoint dir for normal training
+STATE_DIR_FINETUNE="./model_save/sft_ultra/train_latest_state_sft_ultra"   # Checkpoint dir for SFT finetune (TrainConfigSFTUltra)
 STATE_DIR="${STATE_DIR_NORMAL}"          # Active checkpoint dir (set by mode, do not edit)
 
 # --- Advanced Configuration ---
