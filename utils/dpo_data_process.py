@@ -481,11 +481,11 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
     # SFT模型保存在 /model_save/sft/ 目录下，tokenizer在 /model_save/my_tokenizer_wiki/ 目录下
     infer_config = InferConfig()
     # 如果SFT目录下有.bin格式的checkpoint，使用最佳checkpoint
-    sft_model_path = PROJECT_ROOT + '/model_save/sft/chat_small_t5.best.bin'
+    sft_model_path = PROJECT_ROOT + '/model_save/sft_ultra/chat_small_t5.best.bin'
     if os.path.exists(sft_model_path):
         infer_config.model_dir = sft_model_path
         # tokenizer需要单独指定，因为.bin文件不包含tokenizer
-        infer_config.tokenizer_dir = PROJECT_ROOT + '/model_save/my_tokenizer_wiki/'
+        infer_config.tokenizer_dir = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
         print(f'使用SFT模型: {sft_model_path}')
         print(f'使用tokenizer: {infer_config.tokenizer_dir}')
     else:
@@ -493,7 +493,7 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
         print(f'未找到SFT模型 {sft_model_path}，使用默认配置: {infer_config.model_dir}')
         if infer_config.tokenizer_dir is None:
             # 如果默认配置也没有指定tokenizer_dir，尝试使用my_tokenizer_wiki
-            default_tokenizer = PROJECT_ROOT + '/model_save/my_tokenizer_wiki/'
+                default_tokenizer = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'
             if os.path.exists(default_tokenizer):
                 infer_config.tokenizer_dir = default_tokenizer
                 print(f'使用默认tokenizer: {infer_config.tokenizer_dir}')
