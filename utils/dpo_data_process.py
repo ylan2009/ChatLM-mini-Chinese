@@ -834,10 +834,10 @@ if __name__ == '__main__':
     # generate_alpaca_gpt4_reject_by_strategy(groups_cnt=500, strategy='mixed')
     
     # 方法2：使用模型生成（需要SFT模型训练良好）
-    generate_alpaca_gpt4_reject_response(groups_cnt=500, batch_size=256)
+    # generate_alpaca_gpt4_reject_response(groups_cnt=500, batch_size=256)
 
     # # 合并数据集
-    # merge_rlhf_data()
+    merge_rlhf_data()
 
     # # 3. split train and eval dataset
-    # split_train_eval_dataset()
+    split_train_eval_dataset()
