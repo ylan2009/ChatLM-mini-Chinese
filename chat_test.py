@@ -142,7 +142,7 @@ def single_chat(bot: ChatBot, search_type: str) -> None:
             if current_search != 'greedy':
                 import torch
                 # 使用 chat() 内部已拼接 [EOS]，这里直接用 batch_encode_plus
-                encoded = bot.batch_encode_plus([user_input + '[EOS]'], padding=True)
+                encoded = bot.batch_encode_plus([user_input + '[EOS]'], padding=True, add_special_tokens=False)
                 input_ids = torch.LongTensor(encoded.input_ids).to(bot.device)
                 attention_mask = torch.LongTensor(encoded.attention_mask).to(bot.device)
                 outputs = bot.model.my_generate(
@@ -188,7 +188,7 @@ def batch_test(bot: ChatBot, search_type: str, questions: list = None) -> None:
                 response = bot.chat(q)
             else:
                 import torch
-                encoded = bot.batch_encode_plus([q + '[EOS]'], padding=True)
+                encoded = bot.batch_encode_plus([q + '[EOS]'], padding=True, add_special_tokens=False)
                 input_ids = torch.LongTensor(encoded.input_ids).to(bot.device)
                 attention_mask = torch.LongTensor(encoded.attention_mask).to(bot.device)
                 outputs = bot.model.my_generate(

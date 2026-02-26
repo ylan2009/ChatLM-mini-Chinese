@@ -79,7 +79,7 @@ class ChatBot:
         '''
         流式对话，线程启动后可返回，通过迭代streamer获取生成的文字，仅支持greedy search
         '''
-        encoded = self.encode(input_txt + '[EOS]')
+        encoded = self.encode(input_txt + '[EOS]', add_special_tokens=False)
         
         input_ids = torch.LongTensor([encoded.input_ids]).to(self.device)
         attention_mask = torch.LongTensor([encoded.attention_mask]).to(self.device)
@@ -108,7 +108,7 @@ class ChatBot:
         
         # add EOS token
         input_txts = [f"{txt}[EOS]" for txt in input_txt]
-        encoded = self.batch_encode_plus(input_txts,  padding=True)
+        encoded = self.batch_encode_plus(input_txts, padding=True, add_special_tokens=False)
         input_ids = torch.LongTensor(encoded.input_ids).to(self.device)
         attention_mask = torch.LongTensor(encoded.attention_mask).to(self.device)
 
