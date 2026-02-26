@@ -18,6 +18,8 @@ class TextToTextModel(T5ForConditionalGeneration):
                 max_seq_len: int=256,
                 search_type: str='beam',
                 streamer: TextIteratorStreamer=None,
+                temperature: float=None,
+                top_p: float=None,
             ) -> Tensor:
         '''
         自定义gennerate方法方便调用、测试
@@ -58,8 +60,8 @@ class TextToTextModel(T5ForConditionalGeneration):
             generation_config.num_beams = 1
             generation_config.do_sample = True
             generation_config.top_k = 50
-            generation_config.temperature = 0.98   # 越低，贫富差距越大，越高(>1)，越趋向于均匀分布
-            generation_config.top_p = 0.80
+            generation_config.temperature = temperature if temperature is not None else 0.98   # 越低，贫富差距越大，越高(>1)，越趋向于均匀分布
+            generation_config.top_p = top_p if top_p is not None else 0.80
             generation_config.no_repeat_ngram_size = 4
         elif search_type == 'contrastive':
             generation_config.penalty_alpha = 0.5

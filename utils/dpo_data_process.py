@@ -395,13 +395,14 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                     infer_config.max_seq_len
                 )
 
-                # reject 不需要"最好"，但需要"相关且差一些"：用 sampling 比 greedy 更不容易坍缩到高频泛化回答
-                # sampling模式内部已设置temperature=0.98, top_p=0.80
+                # reject 不需要"最好"，但需要"相关且差一些"：提高 temperature 和 top_p 增加随机性，使生成质量稍差
                 outputs = model.my_generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_seq_len=current_max_len,
                     search_type="sampling",
+                    temperature=1.2,
+                    top_p=0.95,
                 )
             decoded = tokenizer.batch_decode(
                 outputs.detach().cpu().numpy(),
@@ -721,13 +722,14 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
                         infer_config.max_seq_len
                     )
                     
-                    # 使用sampling而不是greedy，增加多样性
-                    # sampling模式内部已设置temperature=0.98, top_p=0.80
+                    # 使用 sampling，提高 temperature 和 top_p 使生成质量稍差，适合作为 DPO 的 reject
                     outputs = model.my_generate(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
                         max_seq_len=current_max_len,
                         search_type='sampling',
+                        temperature=1.2,
+                        top_p=0.95,
                     )
                 
                 decoded = tokenizer.batch_decode(
