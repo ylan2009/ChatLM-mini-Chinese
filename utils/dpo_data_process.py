@@ -619,6 +619,13 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
         gpu_valid = {i: 0 for i in range(num_gpus)}
         completed_gpus = set()  # 跟踪已完成的GPU
         last_print_time = time.time()
+        last_progress_time = time.time()   # 上次有进度更新的时间
+        last_total_processed = 0           # 上次检查时的总处理数
+        start_time = time.time()           # 整体开始时间
+
+        # 超时参数
+        NO_PROGRESS_TIMEOUT = 300   # 超过 300 秒无任何进度更新，视为卡死
+        TOTAL_TIMEOUT = 7200        # 整体超时 2 小时，强制退出
         
         # 主循环：当所有GPU都发送完成信号时退出
         while len(completed_gpus) < num_gpus:
@@ -636,11 +643,54 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
                 completed_gpus.add(gpu_id)
                 print(f"GPU {gpu_id}: 任务完成，已接收完成信号")
             
-            # 打印进度（每秒刷新一次）
-            if time.time() - last_print_time >= 5:
+            # 检查进程存活状态：如果进程已退出但未发送完成信号，强制标记为完成（可能是异常退出）
+            for i, p in enumerate(procs):
+                if i not in completed_gpus and not p.is_alive():
+                    completed_gpus.add(i)
+                    exit_code = p.exitcode
+                    if exit_code != 0:
+                        print(f"⚠️  GPU {i}: 进程异常退出 (exitcode={exit_code})，强制标记为完成，已处理 {gpu_processed[i]} 条/有效 {gpu_valid[i]} 条")
+                    else:
+                        print(f"GPU {i}: 进程已正常退出但未发送完成信号，强制标记为完成")
+            
+            now = time.time()
+
+            # 更新无进度计时器：只要总处理数有增长，就重置计时
+            if total_processed > last_total_processed:
+                last_total_processed = total_processed
+                last_progress_time = now
+
+            # 兜底1：无进度超时（卡死检测）
+            no_progress_elapsed = now - last_progress_time
+            if no_progress_elapsed > NO_PROGRESS_TIMEOUT:
+                pending = [i for i in range(num_gpus) if i not in completed_gpus]
+                print(f"\n⚠️  已超过 {NO_PROGRESS_TIMEOUT} 秒无任何进度更新（疑似卡死），强制终止未完成的 GPU 进程: {pending}")
+                for i in pending:
+                    procs[i].terminate()
+                    procs[i].join(timeout=10)
+                    completed_gpus.add(i)
+                    print(f"   GPU {i}: 已强制终止，已处理 {gpu_processed[i]} 条/有效 {gpu_valid[i]} 条")
+                break
+
+            # # 兜底2：整体超时
+            # total_elapsed = now - start_time
+            # if total_elapsed > TOTAL_TIMEOUT:
+            #     pending = [i for i in range(num_gpus) if i not in completed_gpus]
+            #     print(f"\n⚠️  整体运行已超过 {TOTAL_TIMEOUT/3600:.1f} 小时，强制终止未完成的 GPU 进程: {pending}")
+            #     for i in pending:
+            #         procs[i].terminate()
+            #         procs[i].join(timeout=10)
+            #         completed_gpus.add(i)
+            #         print(f"   GPU {i}: 已强制终止，已处理 {gpu_processed[i]} 条/有效 {gpu_valid[i]} 条")
+            #     break
+
+            # 打印进度（每5秒刷新一次）
+            if now - last_print_time >= 5:
                 progress_str = ' | '.join([f'GPU{i}: 处理{gpu_processed[i]}/有效{gpu_valid[i]}' for i in range(num_gpus)])
-                print(f'总进度: 处理{total_processed} | 有效{total_valid} | {progress_str}')
-                last_print_time = time.time()
+                elapsed_min = (now - start_time) / 60
+                no_prog_sec = int(no_progress_elapsed)
+                print(f'总进度: 处理{total_processed} | 有效{total_valid} | {progress_str} | 运行{elapsed_min:.1f}min | 无进度{no_prog_sec}s')
+                last_print_time = now
             
             time.sleep(0.1)  # 降低CPU占用
         
