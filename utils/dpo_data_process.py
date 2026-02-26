@@ -440,9 +440,8 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
             batch_prompts = []
             batch_items = []
 
-            # 每 10 个 batch 上报一次进度，减少队列通信开销
-            if (processed_count // batch_size) % 10 == 0:
-                progress_queue.put((gpu_id, processed_count, len(chunk_items)))
+            # 每个 batch 上报一次进度
+            progress_queue.put((gpu_id, processed_count, len(chunk_items)))
 
     # ====== 关键修改：发送完成信号 ======
     result_queue.put((gpu_id, chunk_items))
