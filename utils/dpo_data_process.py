@@ -913,7 +913,7 @@ if __name__ == '__main__':
     # generate_alpaca_gpt4_reject_by_strategy(groups_cnt=500, strategy='mixed')
     
     # 方法2：使用模型生成（需要SFT模型训练良好）
-    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=512)
+    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=256)
 
     # # 合并数据集
     merge_rlhf_data()
