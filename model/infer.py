@@ -4,7 +4,7 @@ import platform
 from typing import Union
 import torch
 
-from transformers import TextIteratorStreamer,PreTrainedTokenizerFast
+from transformers import TextIteratorStreamer, PreTrainedTokenizerFast, AutoTokenizer
 from safetensors.torch import load_model
 
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
@@ -23,7 +23,11 @@ class ChatBot:
         # 初始化tokenizer
         # 如果tokenizer_dir为None，则使用model_dir（向后兼容）
         tokenizer_path = infer_config.tokenizer_dir if infer_config.tokenizer_dir is not None else infer_config.model_dir
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_path)
+        try:
+            tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_path)
+        except (ValueError, Exception):
+            # 回退到 AutoTokenizer（兼容 SentencePiece 等 slow tokenizer 格式）
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_fast=False)
         self.tokenizer = tokenizer
         self.encode = tokenizer.encode_plus
         self.batch_decode = tokenizer.batch_decode
