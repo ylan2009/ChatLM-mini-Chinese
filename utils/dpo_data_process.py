@@ -173,6 +173,71 @@ def _cleanup_generated_text(txt: str, eos_token: str | None) -> str:
     return txt
 
 
+def _is_good_reject(prompt: str, chosen: str, reject: str, min_len: int = 10) -> bool:
+    """
+    判断生成的 reject 是否具备足够质量，用于 DPO 训练。
+    
+    过滤规则：
+    1. reject 不能为空或过短（< min_len 字符）
+    2. reject 不能与 chosen 完全相同
+    3. reject 长度不能低于 chosen 的 15%（过短说明生成失败）
+    4. reject 不能是纯重复字符（如 "啊啊啊啊啊"）
+    5. reject 中有效汉字/字母比例不能过低（过滤乱码）
+    6. reject 不能与 chosen 高度重叠（字符级 Jaccard > 0.92，说明几乎一样）
+    7. reject 不能与 chosen 差异过大导致完全跑题（bigram 重叠 < 0.03，说明完全无关）
+    """
+    if not reject or len(reject.strip()) < min_len:
+        return False
+
+    reject = reject.strip()
+    chosen = chosen.strip()
+
+    # 规则2：与 chosen 完全相同
+    if reject == chosen:
+        return False
+
+    # 规则3：reject 长度不能低于 chosen 的 15%
+    if len(chosen) > 0 and len(reject) < len(chosen) * 0.15:
+        return False
+
+    # 规则4：纯重复字符检测（最高频字符占比超过 60%）
+    if len(reject) > 0:
+        from collections import Counter
+        char_counts = Counter(reject.replace(' ', '').replace('\n', ''))
+        most_common_ratio = char_counts.most_common(1)[0][1] / len(reject)
+        if most_common_ratio > 0.6:
+            return False
+
+    # 规则5：有效字符比例（汉字 + 字母 + 数字）不能低于 30%
+    valid_chars = sum(1 for c in reject if '\u4e00' <= c <= '\u9fff' or c.isalnum())
+    if len(reject) > 0 and valid_chars / len(reject) < 0.30:
+        return False
+
+    # 规则6：字符级 Jaccard 相似度过高（> 0.92）
+    set_chosen = set(chosen)
+    set_reject = set(reject)
+    intersection = len(set_chosen & set_reject)
+    union = len(set_chosen | set_reject)
+    if union > 0 and intersection / union > 0.92:
+        return False
+
+    # 规则7：bigram 重叠过低（< 0.03），说明 reject 与 chosen/prompt 完全无关
+    def get_bigrams(text: str) -> set:
+        return {text[i:i+2] for i in range(len(text) - 1)}
+    
+    bigrams_chosen = get_bigrams(chosen)
+    bigrams_reject = get_bigrams(reject)
+    bigrams_prompt = get_bigrams(prompt)
+    
+    # reject 与 chosen 或 prompt 至少有一个有一定 bigram 重叠
+    overlap_chosen = len(bigrams_chosen & bigrams_reject) / max(len(bigrams_reject), 1)
+    overlap_prompt = len(bigrams_prompt & bigrams_reject) / max(len(bigrams_reject), 1)
+    if overlap_chosen < 0.03 and overlap_prompt < 0.03:
+        return False
+
+    return True
+
+
 def generate_reject_by_strategy(data: list, strategy: str = 'mixed') -> list:
     """
     使用简单策略生成reject，不依赖模型。
@@ -361,6 +426,10 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                 if len(cur_prompt) == 0 or len(cur_chosen) == 0 or len(cur_reject) == 0:
                     continue
                 if len(cur_prompt) > max_len or len(cur_chosen) > max_len or len(cur_reject) > max_len:
+                    continue
+
+                # 质量过滤：只保留质量足够好的 reject
+                if not _is_good_reject(cur_prompt, cur_chosen, cur_reject):
                     continue
 
                 chunk_items.append(
@@ -684,6 +753,10 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
                     if len(cur_prompt) == 0 or len(cur_chosen) == 0 or len(cur_reject) == 0:
                         continue
                     if len(cur_prompt) > max_len or len(cur_chosen) > max_len or len(cur_reject) > max_len:
+                        continue
+
+                    # 质量过滤：只保留质量足够好的 reject
+                    if not _is_good_reject(cur_prompt, cur_chosen, cur_reject):
                         continue
                     
                     all_items.append({
