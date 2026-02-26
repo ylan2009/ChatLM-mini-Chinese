@@ -381,7 +381,8 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
         if len(batch_prompts) >= batch_size or idx == len(data_chunk) - 1:
             encoded = tokenizer.batch_encode_plus(
                 batch_prompts,
-                truncation=False,
+                truncation=True,
+                max_length=infer_config.max_seq_len,
                 padding=True,
             )
 
@@ -389,17 +390,11 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
                 input_ids = torch.LongTensor(encoded.input_ids).to(device)
                 attention_mask = torch.LongTensor(encoded.attention_mask).to(device)
 
-                # 计算合适的生成长度：prompt长度 + 期望的回答长度
-                current_max_len = min(
-                    input_ids.shape[1] + max_len,
-                    infer_config.max_seq_len
-                )
-
                 # reject 不需要"最好"，但需要"相关且差一些"：提高 temperature 和 top_p 增加随机性，使生成质量稍差
                 outputs = model.my_generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
-                    max_seq_len=current_max_len,
+                    max_seq_len=input_ids.shape[1] + max_len,
                     search_type="sampling",
                     temperature=1.2,
                     top_p=0.95,
@@ -445,7 +440,9 @@ def _process_data_chunk(data_chunk, gpu_id, infer_config, max_len, batch_size, r
             batch_prompts = []
             batch_items = []
 
-            progress_queue.put((gpu_id, processed_count, len(chunk_items)))
+            # 每 10 个 batch 上报一次进度，减少队列通信开销
+            if (processed_count // batch_size) % 10 == 0:
+                progress_queue.put((gpu_id, processed_count, len(chunk_items)))
 
     # ====== 关键修改：发送完成信号 ======
     result_queue.put((gpu_id, chunk_items))
@@ -708,7 +705,8 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
             if len(batch_prompts) >= batch_size or idx == len(data) - 1:
                 encoded = tokenizer.batch_encode_plus(
                     batch_prompts,
-                    truncation=False,
+                    truncation=True,
+                    max_length=infer_config.max_seq_len,
                     padding=True,
                 )
                 
@@ -716,17 +714,11 @@ def generate_alpaca_gpt4_reject_response(groups_cnt: int=50000, max_len: int=320
                     input_ids = torch.LongTensor(encoded.input_ids).to(device)
                     attention_mask = torch.LongTensor(encoded.attention_mask).to(device)
                     
-                    # 计算合适的生成长度
-                    current_max_len = min(
-                        input_ids.shape[1] + max_len,
-                        infer_config.max_seq_len
-                    )
-                    
                     # 使用 sampling，提高 temperature 和 top_p 使生成质量稍差，适合作为 DPO 的 reject
                     outputs = model.my_generate(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
-                        max_seq_len=current_max_len,
+                        max_seq_len=input_ids.shape[1] + max_len,
                         search_type='sampling',
                         temperature=1.2,
                         top_p=0.95,
@@ -921,7 +913,7 @@ if __name__ == '__main__':
     # generate_alpaca_gpt4_reject_by_strategy(groups_cnt=500, strategy='mixed')
     
     # 方法2：使用模型生成（需要SFT模型训练良好）
-    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=256)
+    generate_alpaca_gpt4_reject_response(groups_cnt=0, batch_size=512)
 
     # # 合并数据集
     merge_rlhf_data()
