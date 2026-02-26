@@ -1,7 +1,11 @@
 # coding=utf-8
 from typing import Dict, Optional
 import time
-import os 
+import os
+import sys
+
+# 将项目根目录加入 sys.path，确保从 dpo/ 子目录运行时也能找到 config 等模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import torch
