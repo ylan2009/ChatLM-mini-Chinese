@@ -5,10 +5,10 @@
 用于快速测试预训练模型或 SFT 微调模型的对话质量
 
 用法:
-    python chat_test.py                        # 默认加载 SFT best 模型，greedy 解码
+    python chat_test.py                        # 默认加载 SFT best 模型，beam 解码
     python chat_test.py --model sft            # 加载 SFT best 模型
     python chat_test.py --model pretrain       # 加载预训练 best 模型
-    python chat_test.py --model sft --search beam      # beam search 解码
+    python chat_test.py --model sft --search greedy    # greedy 解码
     python chat_test.py --model sft --search sampling  # sampling 解码
     python chat_test.py --batch                # 批量测试预设问题集
 """
@@ -279,7 +279,7 @@ def main():
         help='选择模型: sft(SFT微调最优) / pretrain(预训练最优) / hf(HF格式目录)'
     )
     parser.add_argument(
-        '--search', type=str, default='greedy',
+        '--search', type=str, default='beam',
         choices=['greedy', 'beam', 'sampling', 'contrastive'],
         help='解码策略: greedy / beam / sampling / contrastive'
     )
