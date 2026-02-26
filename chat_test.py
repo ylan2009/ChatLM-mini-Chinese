@@ -140,12 +140,11 @@ def single_chat(bot: ChatBot, search_type: str) -> None:
             response = bot.chat(user_input)
             # 如果 chat 方法不支持 search_type 参数，则直接调用底层
             if current_search != 'greedy':
-                from model.infer import ChatBot as _CB
-                # 直接调用底层 my_generate 支持不同策略
                 import torch
-                encoded = bot.encode(user_input + '[EOS]')
-                input_ids = torch.LongTensor([encoded.input_ids]).to(bot.device)
-                attention_mask = torch.LongTensor([encoded.attention_mask]).to(bot.device)
+                # 使用 chat() 内部已拼接 [EOS]，这里直接用 batch_encode_plus
+                encoded = bot.batch_encode_plus([user_input + '[EOS]'], padding=True)
+                input_ids = torch.LongTensor(encoded.input_ids).to(bot.device)
+                attention_mask = torch.LongTensor(encoded.attention_mask).to(bot.device)
                 outputs = bot.model.my_generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
@@ -189,9 +188,9 @@ def batch_test(bot: ChatBot, search_type: str, questions: list = None) -> None:
                 response = bot.chat(q)
             else:
                 import torch
-                encoded = bot.encode(q + '[EOS]')
-                input_ids = torch.LongTensor([encoded.input_ids]).to(bot.device)
-                attention_mask = torch.LongTensor([encoded.attention_mask]).to(bot.device)
+                encoded = bot.batch_encode_plus([q + '[EOS]'], padding=True)
+                input_ids = torch.LongTensor(encoded.input_ids).to(bot.device)
+                attention_mask = torch.LongTensor(encoded.attention_mask).to(bot.device)
                 outputs = bot.model.my_generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
