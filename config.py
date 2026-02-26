@@ -42,25 +42,26 @@ class InferConfig:
 @dataclass
 class DpoConfig:
     max_seq_len: int = 512 + 8                  # 8 for eos token 
-    sft_model_file: str = PROJECT_ROOT + '/model_save/'
+    sft_model_file: str = PROJECT_ROOT + '/model_save/sft_ultra/'
 
-    tokenizer_dir: str = PROJECT_ROOT + '/model_save/'   # tokenizer一般和model权重放在同一个文件夹
+    tokenizer_dir: str = PROJECT_ROOT + '/model_save/my_tokenizer_sp/'   # tokenizer一般和model权重放在同一个文件夹
 
-    dpo_train_file: str = PROJECT_ROOT + '/data/my_dpo_data.json'
+    dpo_train_file: str = PROJECT_ROOT + '/data/my_dpo_train.json'
     dpo_eval_file: str = PROJECT_ROOT + '/data/my_dpo_eval.json'
 
     adapter_file: str = PROJECT_ROOT + '/data/dpo/adapter_model.safetensors'
     log_dir: str = PROJECT_ROOT + '/logs/'
 
+    # 8万样本DPO推荐默认值（兼顾稳定性与训练效率）
     per_device_train_batch_size: int = 4
-    num_train_epochs: int = 4
-    gradient_accumulation_steps: int = 8
-    learning_rate: float = 1e-5
+    num_train_epochs: int = 3
+    gradient_accumulation_steps: int = 4
+    learning_rate: float = 5e-6
     logging_first_step: bool = True
-    logging_steps: int = 20                      
-    save_steps: int = 2000
+    logging_steps: int = 20
+    save_steps: int = 500
     output_dir: str = PROJECT_ROOT + '/model_save/dpo'
-    warmup_steps: int = 1000
+    warmup_steps: int = 200
     fp16: bool = True
     seed: int = 23333
     beta: float = 0.1
