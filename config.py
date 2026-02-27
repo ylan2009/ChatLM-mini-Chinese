@@ -56,15 +56,15 @@ class DpoConfig:
     per_device_train_batch_size: int = 4
     num_train_epochs: int = 3
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 5e-6
+    learning_rate: float = 1e-6       # 从 5e-6 降低到 1e-6，DPO 对 lr 敏感，过大易导致训练不稳定
     logging_first_step: bool = True
     logging_steps: int = 20
     save_steps: int = 500
     output_dir: str = PROJECT_ROOT + '/model_save/dpo'
-    warmup_steps: int = 200
+    warmup_steps: int = 100           # 从 200 降低到 100，5万样本量不需要过长的 warmup
     fp16: bool = True
     seed: int = 23333
-    beta: float = 0.1
+    beta: float = 0.2                 # 从 0.1 增大到 0.2，加强对偏离参考模型的惩罚，训练更稳定
 
 
 
