@@ -10,6 +10,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import torch
+
+# 兼容 PyTorch 2.6：torch.load 默认 weights_only=True，但 transformers 加载
+# RNG 状态文件时包含 numpy 对象，需要 weights_only=False 才能正常加载
+_torch_load_orig = torch.load
+def _torch_load_compat(*args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return _torch_load_orig(*args, **kwargs)
+torch.load = _torch_load_compat
+
 from datasets import Dataset, load_dataset
 from transformers import AutoTokenizer, TrainingArguments
 from trl import DPOTrainer
