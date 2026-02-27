@@ -30,7 +30,7 @@ CHECKPOINT_DIR="../model_save/dpo"
 
 # --- Advanced Configuration ---
 POLL_INTERVAL=60                        # Seconds between time checks when waiting
-GRACE_PERIOD=30                         # Seconds to wait after SIGINT before SIGTERM
+GRACE_PERIOD=300                        # Seconds to wait after SIGINT before SIGTERM (给 Trainer 足够时间保存 checkpoint)
 CONDA_ENV="chatlm"                      # Conda environment name (leave empty to skip)
 TIMEZONE="Asia/Shanghai"                # Timezone for schedule
 
@@ -184,23 +184,29 @@ kill_tree() {
 
 stop_training() {
     if [ -n "${TRAIN_PID}" ] && kill -0 "${TRAIN_PID}" 2>/dev/null; then
-        log "Stopping DPO training (PID: ${TRAIN_PID}) with SIGINT..."
-        kill -INT -"${TRAIN_PID}" 2>/dev/null
-        kill_tree "${TRAIN_PID}" INT 2>/dev/null
+        log "Stopping DPO training (PID: ${TRAIN_PID}) with SIGINT (waiting for checkpoint save)..."
+        # 只发给 Python 进程本身，让 HuggingFace Trainer 捕获 SIGINT 并自动保存 checkpoint
+        # 不要用 kill -INT -PID（进程组信号），否则 Trainer 内部子进程也会被打断，无法完成保存
+        kill -INT "${TRAIN_PID}" 2>/dev/null
 
+        # 等待 Trainer 保存 checkpoint（保存大模型可能需要较长时间，给 300s）
         local waited=0
-        while kill -0 "${TRAIN_PID}" 2>/dev/null && [ "${waited}" -lt "${GRACE_PERIOD}" ]; do
-            sleep 1; waited=$((waited + 1))
+        local save_timeout=300
+        log "Waiting up to ${save_timeout}s for checkpoint to be saved..."
+        while kill -0 "${TRAIN_PID}" 2>/dev/null && [ "${waited}" -lt "${save_timeout}" ]; do
+            sleep 2; waited=$((waited + 2))
+            # 每 30s 打印一次等待进度
+            [ $((waited % 30)) -eq 0 ] && log "Still waiting for training to stop... (${waited}s elapsed)"
         done
 
         if kill -0 "${TRAIN_PID}" 2>/dev/null; then
-            log "Not stopped after ${GRACE_PERIOD}s, sending SIGTERM..."
-            kill -TERM -"${TRAIN_PID}" 2>/dev/null
+            log "Not stopped after ${save_timeout}s, sending SIGTERM..."
+            kill -TERM "${TRAIN_PID}" 2>/dev/null
             kill_tree "${TRAIN_PID}" TERM 2>/dev/null
-            sleep 5
+            sleep 10
             if kill -0 "${TRAIN_PID}" 2>/dev/null; then
-                log "Force killing..."
-                kill -9 -"${TRAIN_PID}" 2>/dev/null
+                log "Force killing (SIGKILL)..."
+                kill -9 "${TRAIN_PID}" 2>/dev/null
                 kill_tree "${TRAIN_PID}" 9 2>/dev/null
             fi
         fi

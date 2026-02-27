@@ -59,7 +59,8 @@ class DpoConfig:
     learning_rate: float = 1e-6       # 从 5e-6 降低到 1e-6，DPO 对 lr 敏感，过大易导致训练不稳定
     logging_first_step: bool = True
     logging_steps: int = 20
-    save_steps: int = 500
+    save_steps: int = 100          # 每 100 步保存一次 checkpoint，确保中断时不丢失太多进度
+    save_total_limit: int = 3      # 最多保留 3 个 checkpoint，避免磁盘占用过大
     output_dir: str = PROJECT_ROOT + '/model_save/dpo'
     warmup_steps: int = 100           # 从 200 降低到 100，5万样本量不需要过长的 warmup
     fp16: bool = True
