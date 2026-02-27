@@ -120,8 +120,9 @@ start_training() {
     cd "${SCRIPT_DIR}"
 
     # 训练进程直接写原始日志文件（避免 FIFO/管道导致 SIGPIPE 崩溃）
+    # 注意：不用 setsid，直接后台运行，确保 $! 是真正的 Python PID，SIGINT 才能正确送达
     local raw_log="${train_log}.raw"
-    setsid ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} >> "${raw_log}" 2>&1 &
+    ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} >> "${raw_log}" 2>&1 &
     TRAIN_PID=$!
     log "Training started with PID: ${TRAIN_PID}"
 
