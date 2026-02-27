@@ -90,7 +90,8 @@ start_training() {
 
     # 断点续训：检测 checkpoint 目录下是否存在 checkpoint-* 子目录
     local resume_arg=""
-    local abs_checkpoint_dir="${SCRIPT_DIR}/${CHECKPOINT_DIR#../}"
+    local abs_checkpoint_dir
+    abs_checkpoint_dir="$(cd "${SCRIPT_DIR}" && cd "${CHECKPOINT_DIR}" 2>/dev/null && pwd)"
     # 找最新的 checkpoint-* 目录
     local latest_ckpt
     latest_ckpt=$(ls -dt "${abs_checkpoint_dir}"/checkpoint-* 2>/dev/null | head -n 1)
@@ -103,6 +104,7 @@ start_training() {
 
     log "Starting DPO training (log: ${train_log})"
     log "Command: ${PYTHON_BIN} ${TRAIN_SCRIPT} ${resume_arg}"
+    log "To follow training log: tail -f ${train_log}"
 
     # 激活 conda 环境
     if [ -n "${CONDA_ENV}" ] && command -v conda &>/dev/null; then
@@ -110,9 +112,17 @@ start_training() {
         conda activate "${CONDA_ENV}" 2>/dev/null
     fi
 
+    # 禁用 tokenizers 并行警告；过滤 \r 进度条字符避免日志混乱
+    export TOKENIZERS_PARALLELISM=false
+
     cd "${SCRIPT_DIR}"
-    setsid ${PYTHON_BIN} ${TRAIN_SCRIPT} ${resume_arg} >> "${train_log}" 2>&1 &
+    # 用临时 fifo 管道过滤 \r，同时保留 python 进程 PID
+    local fifo="${LOG_DIR}/.dpo_train_fifo_$$"
+    mkfifo "${fifo}"
+    tr -d '\r' < "${fifo}" | grep --line-buffered -v $'^\r*$' >> "${train_log}" &
+    setsid ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} > "${fifo}" 2>&1 &
     TRAIN_PID=$!
+    rm -f "${fifo}"
     log "Training started with PID: ${TRAIN_PID}"
 }
 
