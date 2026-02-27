@@ -89,10 +89,13 @@ def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
         max_grad_norm=1.0,
         log_level='info',
         warmup_steps=config.warmup_steps,
-        bf16=False,
-        fp16=config.fp16,
+        bf16=True,           # RTX 3080 支持 bf16，比 fp16 更稳定，显存占用略低
+        fp16=False,
         seed=config.seed,
         logging_dir=config.log_dir,
+        dataloader_num_workers=4,       # 多进程数据加载，减少 CPU/IO 瓶颈
+        dataloader_pin_memory=True,     # 锁页内存，加速 CPU->GPU 数据传输
+        # gradient_checkpointing=True,    # 梯度检查点：降低 GPU0 显存压力，避免 OOM
     )
 
     # 7. 初始化 DPO trainer
