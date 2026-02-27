@@ -1,5 +1,6 @@
 # coding=utf-8
 from typing import Dict, Optional
+import argparse
 import time
 import os
 import sys
@@ -44,7 +45,7 @@ def get_dataset(split: str, file: str, cache_dir: str = '.cache') -> Dataset:
     return dataset.map(split_prompt_and_responses).shuffle(2333)
 
 
-def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
+def train_dpo(config: DpoConfig, peft_config: LoraConfig=None, resume_from_checkpoint: str=None) -> None:
 
     # step 1. 加载tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_dir)
@@ -115,9 +116,9 @@ def train_dpo(config: DpoConfig, peft_config: LoraConfig=None) -> None:
         is_encoder_decoder=True,
     )
 
-    # 8. 训练
+    # 8. 训练（支持断点续训）
     dpo_trainer.train(
-        # resume_from_checkpoint=True
+        resume_from_checkpoint=resume_from_checkpoint if resume_from_checkpoint else None
     )
 
     # 9. save log
@@ -188,6 +189,15 @@ def merge_lora_weight_into_model(config: DpoConfig, peft_config: LoraConfig) -> 
    
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="DPO Training")
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        type=str,
+        default=None,
+        help="Path to a checkpoint directory to resume training from (e.g. model_save/dpo/checkpoint-500)"
+    )
+    args = parser.parse_args()
+
     peft_config = LoraConfig(
          task_type=TaskType.SEQ_2_SEQ_LM,  # text 2 text lora model 
          inference_mode=False, 
@@ -199,8 +209,8 @@ if __name__ == "__main__":
 
     dpo_config = DpoConfig()
 
-    # 1. train
-    train_dpo(dpo_config, peft_config=None)
+    # 1. train（支持断点续训，由 scheduled_dpo_train.sh 自动传入 --resume_from_checkpoint）
+    train_dpo(dpo_config, peft_config=None, resume_from_checkpoint=args.resume_from_checkpoint)
 
     # 2. merge lora adapter into model
     # merge_lora_weight_into_model(dpo_config, peft_config)
