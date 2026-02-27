@@ -116,10 +116,59 @@ start_training() {
     export TOKENIZERS_PARALLELISM=false
 
     cd "${SCRIPT_DIR}"
-    # 用临时 fifo 管道过滤 \r，同时保留 python 进程 PID
+    # 用临时 fifo 管道 + python 过滤器，分离进度条与训练指标，让日志清晰可读
     local fifo="${LOG_DIR}/.dpo_train_fifo_$$"
     mkfifo "${fifo}"
-    tr -d '\r' < "${fifo}" | grep --line-buffered -v $'^\r*$' >> "${train_log}" &
+
+    # Python 过滤器：
+    #   - 进度条行（含 it/s 或 %| 的行）：只在终端显示，不写入日志文件
+    #   - 训练指标行（含 'loss' 的 JSON 行）：格式化后写入日志，并在终端高亮显示
+    #   - 其他行（启动信息、警告等）：同时写入日志和终端
+    python3 -u - "${train_log}" < "${fifo}" << 'PYEOF' &
+import sys, re, os
+
+log_path = sys.argv[1]
+# 进度条行特征：含 it/s 或 %| 或纯空白
+progress_pat = re.compile(r'it/s|s/it|\d+%\||\|\s*\d+/\d+')
+# 训练指标行特征：含 'loss' 关键字（HuggingFace Trainer 输出的 JSON dict）
+metric_pat   = re.compile(r"'loss'|\"loss\"")
+
+with open(log_path, 'a', buffering=1) as f:
+    for raw in sys.stdin:
+        # 去除 \r 及首尾空白
+        line = raw.replace('\r', '').rstrip()
+        if not line:
+            continue
+
+        if progress_pat.search(line):
+            # 进度条：只打印到终端，不写日志
+            print(line, flush=True)
+        elif metric_pat.search(line):
+            # 训练指标：格式化输出，写日志 + 终端高亮
+            try:
+                import ast
+                d = ast.literal_eval(line.strip())
+                fmt = (
+                    f"[METRICS] step={d.get('step','?'):>5} | "
+                    f"epoch={d.get('epoch',0):.3f} | "
+                    f"loss={d.get('loss',0):.4f} | "
+                    f"acc={d.get('rewards/accuracies',0):.4f} | "
+                    f"margin={d.get('rewards/margins',0):.4f} | "
+                    f"lr={d.get('learning_rate',0):.2e} | "
+                    f"grad={d.get('grad_norm',0):.2f}"
+                )
+            except Exception:
+                fmt = f"[METRICS] {line}"
+            f.write(fmt + '\n')
+            f.flush()
+            print(f"\033[32m{fmt}\033[0m", flush=True)
+        else:
+            # 普通信息行：写日志 + 终端
+            f.write(line + '\n')
+            f.flush()
+            print(line, flush=True)
+PYEOF
+
     setsid ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} > "${fifo}" 2>&1 &
     TRAIN_PID=$!
     rm -f "${fifo}"
