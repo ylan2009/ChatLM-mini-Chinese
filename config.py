@@ -56,18 +56,18 @@ class DpoConfig:
     # 显存消耗约为普通 SFT 的 2 倍，batch_size 不能设太大
     # 有效 batch_size = 4(per_device) × 3(GPU) × 4(accumulation) = 48
     per_device_train_batch_size: int = 4
-    num_train_epochs: int = 3
+    num_train_epochs: int = 5          # 从 3 增加到 5，提升偏好对齐效果（rewards/accuracies 仅 60%）
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 1e-6       # 从 5e-6 降低到 1e-6，DPO 对 lr 敏感，过大易导致训练不稳定
+    learning_rate: float = 5e-7        # 从 1e-6 降低到 5e-7，DPO 对 lr 敏感，更小的 lr 训练更稳定
     logging_first_step: bool = True
     logging_steps: int = 20
-    save_steps: int = 100          # 每 100 步保存一次 checkpoint，确保中断时不丢失太多进度
+    save_steps: int = 200          # 从 100 增加到 200，轮次增加后减少保存频率，避免磁盘占用过大
     save_total_limit: int = 3      # 最多保留 3 个 checkpoint，避免磁盘占用过大
     output_dir: str = PROJECT_ROOT + '/model_save/dpo'
-    warmup_steps: int = 100           # 从 200 降低到 100，5万样本量不需要过长的 warmup
+    warmup_steps: int = 200           # 从 100 增加到 200，训练步数增加后 warmup 相应延长
     fp16: bool = True
     seed: int = 23333
-    beta: float = 0.2                 # 从 0.1 增大到 0.2，加强对偏离参考模型的惩罚，训练更稳定
+    beta: float = 0.3                 # 从 0.2 增大到 0.3，加强偏好对齐强度，减少重复内容
 
 
 
