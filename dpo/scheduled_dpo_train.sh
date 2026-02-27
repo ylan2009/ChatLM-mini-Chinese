@@ -30,7 +30,7 @@ CHECKPOINT_DIR="../model_save/dpo"
 
 # --- Advanced Configuration ---
 POLL_INTERVAL=60                        # Seconds between time checks when waiting
-GRACE_PERIOD=300                        # Seconds to wait after SIGINT before SIGTERM (给 Trainer 足够时间保存 checkpoint)
+GRACE_PERIOD=60                         # Seconds to wait after SIGINT before SIGTERM (给 Trainer 足够时间保存 checkpoint)
 CONDA_ENV="chatlm"                      # Conda environment name (leave empty to skip)
 TIMEZONE="Asia/Shanghai"                # Timezone for schedule
 
@@ -207,7 +207,7 @@ stop_training() {
 
         # 等待 Trainer 保存 checkpoint（保存大模型可能需要较长时间，给 300s）
         local waited=0
-        local save_timeout=300
+        local save_timeout=60
         log "Waiting up to ${save_timeout}s for checkpoint to be saved..."
         while kill -0 "${TRAIN_PID}" 2>/dev/null && [ "${waited}" -lt "${save_timeout}" ]; do
             sleep 2; waited=$((waited + 2))
