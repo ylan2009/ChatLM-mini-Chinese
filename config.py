@@ -52,13 +52,12 @@ class DpoConfig:
     adapter_file: str = PROJECT_ROOT + '/data/dpo/adapter_model.safetensors'
     log_dir: str = PROJECT_ROOT + '/logs/'
 
-    # 8万样本DPO推荐默认值（兼顾稳定性与训练效率）
-    # GPU显存分析：GPU0=12GB/20GB(60%), GPU1/2=6.8GB/20GB(33%)，显存还有大量空余
-    # 提速策略：增大 per_device_train_batch_size，让每张卡吃更多数据
-    # 有效 batch_size = 8(per_device) × 3(GPU) × 2(accumulation) = 48（与原来相同，但每步处理更多样本，速度更快）
-    per_device_train_batch_size: int = 8   # 4 → 8，充分利用剩余显存
+    # DPO 显存说明：DPO 需要同时跑 policy model + reference model 两个模型的前向传播，
+    # 显存消耗约为普通 SFT 的 2 倍，batch_size 不能设太大
+    # 有效 batch_size = 4(per_device) × 3(GPU) × 4(accumulation) = 48
+    per_device_train_batch_size: int = 4
     num_train_epochs: int = 3
-    gradient_accumulation_steps: int = 2   # 4 → 2，减少等待，加快梯度更新频率
+    gradient_accumulation_steps: int = 4
     learning_rate: float = 1e-6       # 从 5e-6 降低到 1e-6，DPO 对 lr 敏感，过大易导致训练不稳定
     logging_first_step: bool = True
     logging_steps: int = 20

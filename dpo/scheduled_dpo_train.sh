@@ -114,6 +114,8 @@ start_training() {
 
     # 禁用 tokenizers 并行警告
     export TOKENIZERS_PARALLELISM=false
+    # 减少 CUDA 显存碎片，避免 OOM（DPO 需同时跑 policy + reference 两个模型，显存压力大）
+    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
     cd "${SCRIPT_DIR}"
 
