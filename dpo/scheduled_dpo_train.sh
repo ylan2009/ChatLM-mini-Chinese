@@ -112,39 +112,58 @@ start_training() {
         conda activate "${CONDA_ENV}" 2>/dev/null
     fi
 
-    # 禁用 tokenizers 并行警告；过滤 \r 进度条字符避免日志混乱
+    # 禁用 tokenizers 并行警告
     export TOKENIZERS_PARALLELISM=false
 
     cd "${SCRIPT_DIR}"
-    # 用临时 fifo 管道 + python 过滤器，分离进度条与训练指标，让日志清晰可读
-    local fifo="${LOG_DIR}/.dpo_train_fifo_$$"
-    mkfifo "${fifo}"
 
-    # Python 过滤器：
-    #   - 进度条行（含 it/s 或 %| 的行）：只在终端显示，不写入日志文件
-    #   - 训练指标行（含 'loss' 的 JSON 行）：格式化后写入日志，并在终端高亮显示
-    #   - 其他行（启动信息、警告等）：同时写入日志和终端
-    python3 -u - "${train_log}" < "${fifo}" << 'PYEOF' &
-import sys, re, os
+    # 训练进程直接写原始日志文件（避免 FIFO/管道导致 SIGPIPE 崩溃）
+    local raw_log="${train_log}.raw"
+    setsid ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} >> "${raw_log}" 2>&1 &
+    TRAIN_PID=$!
+    log "Training started with PID: ${TRAIN_PID}"
 
-log_path = sys.argv[1]
-# 进度条行特征：含 it/s 或 %| 或纯空白
+    # Python 过滤器：tail -f 跟踪原始日志，实时格式化输出到终端和最终日志
+    # - 进度条行（含 it/s 或 %|）：只在终端显示，不写入日志文件
+    # - 训练指标行（含 'loss'）：格式化后写入日志，并在终端高亮显示
+    # - 其他行（启动信息、警告等）：同时写入日志和终端
+    touch "${raw_log}"
+    python3 -u - "${train_log}" "${raw_log}" "${TRAIN_PID}" << 'PYEOF' &
+import sys, re, subprocess, os, signal, time
+
+log_path  = sys.argv[1]
+raw_path  = sys.argv[2]
+train_pid = int(sys.argv[3])
+
 progress_pat = re.compile(r'it/s|s/it|\d+%\||\|\s*\d+/\d+')
-# 训练指标行特征：含 'loss' 关键字（HuggingFace Trainer 输出的 JSON dict）
 metric_pat   = re.compile(r"'loss'|\"loss\"")
 
+def is_alive(pid):
+    try: os.kill(pid, 0); return True
+    except OSError: return False
+
+proc = subprocess.Popen(
+    ['tail', '-f', '-n', '+1', raw_path],
+    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+)
+
 with open(log_path, 'a', buffering=1) as f:
-    for raw in sys.stdin:
-        # 去除 \r 及首尾空白
-        line = raw.replace('\r', '').rstrip()
+    while True:
+        line_bytes = proc.stdout.readline()
+        if not line_bytes:
+            # tail 无输出时检查训练进程是否已退出
+            if not is_alive(train_pid):
+                time.sleep(2)  # 等最后几行刷入
+                continue
+            time.sleep(0.1)
+            continue
+        line = line_bytes.decode('utf-8', errors='replace').replace('\r', '').rstrip()
         if not line:
             continue
 
         if progress_pat.search(line):
-            # 进度条：只打印到终端，不写日志
             print(line, flush=True)
         elif metric_pat.search(line):
-            # 训练指标：格式化输出，写日志 + 终端高亮
             try:
                 import ast
                 d = ast.literal_eval(line.strip())
@@ -163,16 +182,10 @@ with open(log_path, 'a', buffering=1) as f:
             f.flush()
             print(f"\033[32m{fmt}\033[0m", flush=True)
         else:
-            # 普通信息行：写日志 + 终端
             f.write(line + '\n')
             f.flush()
             print(line, flush=True)
 PYEOF
-
-    setsid ${PYTHON_BIN} -u ${TRAIN_SCRIPT} ${resume_arg} > "${fifo}" 2>&1 &
-    TRAIN_PID=$!
-    rm -f "${fifo}"
-    log "Training started with PID: ${TRAIN_PID}"
 }
 
 kill_tree() {
