@@ -58,7 +58,7 @@ class DpoConfig:
     per_device_train_batch_size: int = 4
     num_train_epochs: int = 5          # 从 3 增加到 5，提升偏好对齐效果（rewards/accuracies 仅 60%）
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 5e-7        # 从 1e-6 降低到 5e-7，DPO 对 lr 敏感，更小的 lr 训练更稳定
+    learning_rate: float = 8e-7        # beta 调回 0.2 后信号变弱，适当提高 lr 补偿
     logging_first_step: bool = True
     logging_steps: int = 20
     save_steps: int = 200          # 从 100 增加到 200，轮次增加后减少保存频率，避免磁盘占用过大
@@ -67,7 +67,7 @@ class DpoConfig:
     warmup_steps: int = 200           # 从 100 增加到 200，训练步数增加后 warmup 相应延长
     fp16: bool = True
     seed: int = 23333
-    beta: float = 0.3                 # 从 0.2 增大到 0.3，加强偏好对齐强度，减少重复内容
+    beta: float = 0.2                 # 调回 0.2，减少梯度震荡，训练更稳定
 
 
 
