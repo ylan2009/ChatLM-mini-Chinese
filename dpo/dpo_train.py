@@ -98,7 +98,6 @@ def train_dpo(config: DpoConfig, peft_config: LoraConfig=None, resume_from_check
         output_dir=config.output_dir,
         optim="adafactor",
         report_to="none",
-        max_grad_norm=1.0,
         log_level='info',
         warmup_steps=config.warmup_steps,
         bf16=True,           # RTX 3080 支持 bf16，比 fp16 更稳定，显存占用略低
