@@ -131,6 +131,18 @@ def interactive_mode(dpo_model, tokenizer, device: str = "cuda"):
         print(f"[DPO]  {answer}")
 
 
+def set_seed(seed: int = 42):
+    """固定随机种子，确保评测结果可复现"""
+    import random
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 def main():
     parser = argparse.ArgumentParser(description="DPO 效果验证脚本")
     parser.add_argument("--sft_model", type=str, default=None,
@@ -149,6 +161,7 @@ def main():
     parser.add_argument("--questions", type=str, nargs="+", default=None,
                         help="自定义测试问题列表，不指定则使用内置问题集")
     args = parser.parse_args()
+    set_seed(42)
 
     cfg = DpoConfig()
 
